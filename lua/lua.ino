@@ -9,7 +9,7 @@
 //                              Farb- und Grafikfunktionen                                                                                        //
 //                              mathematische Funktionen                                                                                          //
 //                              SD-Card-Funktionen                                                                                                //
-//                              Flashloader um zum Basic zurückzukehren                                                                           //
+//                              Flashloader für Hex-Dateien                                                                                       //
 //                                                                                                                                                //
 //      von:Reinhard Zielinski <zille09@gmail.com>                                                                                                //
 //                                                                                                                                                //

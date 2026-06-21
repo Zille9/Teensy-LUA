@@ -148,7 +148,7 @@ int bColor = DARKBLUE;
 const int MAX_C = 640 / 8;                 //Anzahl Textspalten
 const int MAX_R = (480 / 8) - 1;           //Anzahl Textzeilen
 
-char currentTitleText[81] = "F1:Edit  F2:Run  F3:Datei  F4:Leer  F5:Info      --- Teensy-LUA 1.2 ---";
+char currentTitleText[81] = "F1:Edit  F2:Run  F3:Datei  F4:HexMon  F5:Info      --- Teensy-LUA 1.2 ---";
 
 //***************************************** WINDOW **********************************************
 // Struktur für die Fenster-Verwaltung
@@ -345,17 +345,17 @@ void handleIncomingChar(int c) {
         String errMsg = String(lua_tostring(L, -1)) + "\n";
         //Serial.print(errMsg);
 
-        zeigeFehlerPopup("DATEI FEHLER", errMsg.c_str());//vga_print_str(errMsg.c_str());
+        zeigeFehlerPopup("DATEI FEHLER", errMsg.c_str());
         lua_pop(L, 1);
       }
       inputBuffer = "";
     } else {
-      zeigeFehlerPopup("FEHLER", "Kein Verlauf!\n>");//vga_print_str("\nFehler: Kein Verlauf!\n> ");
+      zeigeFehlerPopup("FEHLER", "Kein Verlauf!\n>");
     }
     return;
   }
 
-  // --- NEU: F2: SKRIPT DIREKT STARTEN (RUN) ---
+  // --- F2: SKRIPT DIREKT STARTEN (RUN) ---
   if (c == 195) {
     if (letzteDatei.length() > 0) {
       inputBuffer = "run(\"" + letzteDatei + "\")";
@@ -366,18 +366,18 @@ void handleIncomingChar(int c) {
       if (status != LUA_OK) {
         String errMsg = String(lua_tostring(L, -1)) + "\n";
         //Serial.print(errMsg);
-        zeigeFehlerPopup("FEHLER", errMsg.c_str());//vga_print_str(errMsg.c_str());
+        zeigeFehlerPopup("FEHLER", errMsg.c_str());
         lua_pop(L, 1);
       }
       inputBuffer = "";
       vga_print_str("> ");
     } else {
-      zeigeFehlerPopup("FEHLER", "Noch keine Datei im Verlauf!\n> ");//vga_print_str("\nFehler: Noch keine Datei im Verlauf!\n> ");
+      zeigeFehlerPopup("FEHLER", "Noch keine Datei im Verlauf!\n> ");
     }
-    return; // Wichtig: Funktion sofort verlassen!
+    return; 
   }
 
-  // --- NEU: F3: Verzeichnis anzeigen (sd.ls()) ---
+  // --- F3: Verzeichnis anzeigen (sd.ls()) ---
   if (c == 196) {
     inputBuffer = "sd.ls()";
     vga_print_str(inputBuffer.c_str());
@@ -386,14 +386,31 @@ void handleIncomingChar(int c) {
     int status = luaL_dostring(L, inputBuffer.c_str());
     if (status != LUA_OK) {
       String errMsg = "Fehler: " + String(lua_tostring(L, -1)) + "\n";
-      zeigeFehlerPopup("FEHLER", errMsg.c_str());//vga_print_str(errMsg.c_str());
+      zeigeFehlerPopup("FEHLER", errMsg.c_str());
       lua_pop(L, 1);
     }
     inputBuffer = "";
     vga_print_str("> ");
-    return; // Wichtig: Funktion sofort verlassen!
+    return; 
   }
-    // --- NEU: F5: sys.info() ---
+
+    // --- F4: sys.hexmon() ---
+  if (c == 197) {
+    inputBuffer = "sys.hexmon(0)";
+    vga_print_str(inputBuffer.c_str());
+    vga_print_str("\n");
+    // Befehl im Lua-Interpreter ausführen
+    int status = luaL_dostring(L, inputBuffer.c_str());
+    if (status != LUA_OK) {
+      String errMsg = "Fehler: " + String(lua_tostring(L, -1)) + "\n";
+      zeigeFehlerPopup("FEHLER", errMsg.c_str());
+      lua_pop(L, 1);
+    }
+    inputBuffer = "";
+    vga_print_str("> ");
+    return; 
+  }
+    // --- F5: sys.info() ---
   if (c == 198) {
     inputBuffer = "sys.info()";
     vga_print_str(inputBuffer.c_str());
@@ -407,7 +424,7 @@ void handleIncomingChar(int c) {
     }
     inputBuffer = "";
     vga_print_str("> ");
-    return; // Wichtig: Funktion sofort verlassen!
+    return; 
   }
   //-----------------------------------------------------------------------------------------------------------
   //--------------------------------------AUTOVERVOLLSTÄNDIGUNG------------------------------------------------
@@ -430,31 +447,27 @@ void handleIncomingChar(int c) {
 
       if (anzahl == 1) {
         // --- SZENARIO A: EINDEUTIGER TREFFER ---
-        // 1. Alten unvollständigen Namen auf dem VGA-Schirm weglöschen
+        // 1. Alten Namen auf dem VGA-Schirm löschen
         int loeschLaenge = praefix.length();
         for (int i = 0; i < loeschLaenge; i++) {
           cursorX--;
-          if (cursorX < 0) { // Falls Zeilenumbruch im Spiel war (theoretisch)
+          if (cursorX < 0) {
             cursorX = TERM_COLS - 1;
             cursorY--;
           }
           termBuffer[cursorY][cursorX] = '\0';
           vga.drawText(cursorX * 8, cursorY * 8, " ", fColor, bColor, false);
         }
-
-        // 2. Den neuen, vervollständigten Teil im RAM und auf VGA anhängen
-        // Wir fügen den Dateinamen plus die schließenden Zeichen '")' hinzu
+        // Dateinamen plus die schließenden Zeichen '")'
         String ergaenzung = treffer + "\")";
 
         // Den inputBuffer im RAM korrigieren
         inputBuffer = inputBuffer.substring(0, startIndex) + ergaenzung;
         vga_print_str(ergaenzung.c_str());
-        //Serial.print("Vervollstaendigt zu: ");
-        //Serial.println(treffer);
 
       } else if (anzahl > 1) {
         // --- SZENARIO B: MEHRERE TREFFER ---
-        // Wir nutzen Ihre Statusleiste, um alle passenden Dateien kurz einzublenden!
+        // Statusleiste, um alle passenden Dateien kurz einzublenden!
         int yPixel = (TERM_ROWS - 1) * 8; // Zeile 59
         vga.drawRect(60, yPixel, 640, 8, YELLOW); // Blauer Balken für Info
 
@@ -464,7 +477,7 @@ void handleIncomingChar(int c) {
         vga.drawText(8, yPixel, infoText.c_str(), 0, YELLOW, false);
       }
     }
-    return; // Funktion sofort verlassen, damit keine '9' im Text landet!
+    return; 
   }
 
   //-----------------------------------------------------------------------------------------------------------
@@ -472,7 +485,6 @@ void handleIncomingChar(int c) {
   vga.drawText(cursorX * 8, cursorY * 8, " ", fColor, bColor, false);   // Cursor an der alten Position löschen
   if (c == '\n' || c == '\r') {                                         // Enter / Return
     vga_print_str("\n");
-    //Serial.println();
 
     if (cursorY > TEXT_END_ROW) {
       cursorY = TEXT_END_ROW;
@@ -491,7 +503,7 @@ void handleIncomingChar(int c) {
       if (status != LUA_OK) {
         String errMsg = "Fehler: " + String(lua_tostring(L, -1)) + "\n";
         //Serial.print(errMsg);
-        zeigeFehlerPopup("FEHLER", errMsg.c_str());//vga_print_str(errMsg.c_str());
+        zeigeFehlerPopup("FEHLER", errMsg.c_str());
         lua_pop(L, 1);
       }
       inputBuffer = "";
@@ -510,12 +522,11 @@ void handleIncomingChar(int c) {
     }
   }
   else if (c >= 32 && c <= 126) {
-    inputBuffer += (char)c; // Expliziter Cast zu char beim Hinzufügen
+    inputBuffer += (char)c;                                                     // Expliziter Cast zu char beim Hinzufügen
     termBuffer[cursorY][cursorX] = (char)c;
 
     char echo[] = { (char)c, '\0' };                                            // Zeichen auf den Schirm bringen
     vga.drawText(cursorX * 8, cursorY * 8, echo, fColor, bColor, false);
-    //Serial.print((char)c);
 
     cursorX++;
     if (cursorX > TERM_COLS) {
@@ -573,7 +584,6 @@ void OnPress(int unicode, uint8_t modifier, uint8_t keycode) {
   repeatTimer = 0;
   repeatPhase = false;
 
-  // Deine bestehende Logik ausführen
   process_keyboard_logic(unicode, modifier, keycode);
 
 }
@@ -645,7 +655,6 @@ static int lua_custom_print(lua_State *L) {
     else outStr += lua_typename(L, lua_type(L, i));
   }
   outStr += "\n";
-  //Serial.print(outStr);
   vga_print_str(outStr.c_str());
   return 0;
 }
@@ -673,9 +682,9 @@ static int lua_delay(lua_State *L) {
 //************************************* Lua-Inkey ***********************************************
 // Globale Lua-Funktion: inkey() - Gibt den gedrückten Tastencode zurück oder -1
 FLASHMEM int lua_global_inkey(lua_State* L) {
-  int taste = inchar(); // Nutzt Ihre funktionierende, entblockte inchar()-Logik
+  int taste = inchar(); 
   lua_pushinteger(L, taste);
-  return 1; // 1 Rückgabewert an Lua
+  return 1; 
 }
 
 // ============================================================================
@@ -695,7 +704,6 @@ FLASHMEM void lua_load_hex(lua_State *L) {
   // Wenn die Größe 0 ist, abbrechen!
   if (buffer_size == 0) {
     zeigeFehlerPopup("FEHLER", "Fehler: Flash voll! buffer_size ist 0.\r");
-    //vga_print_str("Fehler: Flash voll! buffer_size ist 0.\r");
     return;
   }
 
@@ -703,7 +711,6 @@ FLASHMEM void lua_load_hex(lua_State *L) {
   Serial.printf("Datei Groesse: %d Bytes\n", hexFile.size());
   if (!hexFile) {
     zeigeFehlerPopup("FEHLER", "HEX-Datei nicht gefunden!\r");
-    //vga_print_str("HEX-Datei nicht gefunden!\r");
     firmware_buffer_free(buffer_addr, buffer_size);
     return;
   }
@@ -717,7 +724,6 @@ FLASHMEM void lua_load_hex(lua_State *L) {
   // Fallback: Nur wenn die HEX-Datei fehlerhaft/unvollständig war, läuft der Code hier weiter
   hexFile.close();
 
-  //vga_print_str("FEHLER: Hex-Struktur ungueltig. Reboot...\r");
   zeigeFehlerPopup("FEHLER", "Hex-Struktur ungueltig. Reboot...\r");
   firmware_buffer_free(buffer_addr, buffer_size);
   delay(1000);
@@ -787,17 +793,17 @@ int extrahiereFehlerZeile(const char* errorMsg) {
   int ersterDoppelpunkt = msg.indexOf(":");
 
   if (ersterDoppelpunkt != -1) {
-    // Suchen nach dem zweiten Doppelpunkt, der nach der Zeilennummer kommt
-    int zweiterDoppelpunkt = msg.indexOf(":", ersterDoppelpunkt + 1);
+    
+    int zweiterDoppelpunkt = msg.indexOf(":", ersterDoppelpunkt + 1);                 // Suchen nach dem zweiten Doppelpunkt, der nach der Zeilennummer kommt
 
     if (zweiterDoppelpunkt != -1) {
-      // Der Text zwischen den beiden Doppelpunkten ist unsere Zeilennummer
-      String zeilenString = msg.substring(ersterDoppelpunkt + 1, zweiterDoppelpunkt);
+      
+      String zeilenString = msg.substring(ersterDoppelpunkt + 1, zweiterDoppelpunkt); // Der Text zwischen den beiden Doppelpunkten ist unsere Zeilennummer
       int zeile = zeilenString.toInt();
-      if (zeile > 0) return zeile; // Gültige Zeilennummer gefunden!
+      if (zeile > 0) return zeile;                                                    // Gültige Zeilennummer gefunden!
     }
   }
-  return 1; // Standard-Fallback: Zeile 1, falls nichts gefunden wurde
+  return 1;                                                                           // Zeile 1, falls nichts gefunden wurde
 }
 
 FLASHMEM void open_fullscreen_editor(String filename) {
@@ -834,12 +840,12 @@ FLASHMEM void open_fullscreen_editor(String filename) {
   int initialStartLine = 1;
   int initialCursorY = 16;
 
-  if (editorStartZeile > 1) {                             //Fehlerstelle im Code berechnen
+  if (editorStartZeile > 1) {                                                                 //Fehlerstelle im Code berechnen
     int aktuelleZeileInSchleife = 1;
     int idx = 0;
 
-    // Wir suchen die Byte-Position des Fehlers im Textpuffer
-    while (editorBuffer[idx] != '\0' && aktuelleZeileInSchleife < editorStartZeile) {
+    
+    while (editorBuffer[idx] != '\0' && aktuelleZeileInSchleife < editorStartZeile) {         // Byte-Position des Fehlers im Textpuffer suchen
       if (editorBuffer[idx] == '\n') {
         aktuelleZeileInSchleife++;
       }
@@ -850,9 +856,8 @@ FLASHMEM void open_fullscreen_editor(String filename) {
       initialCursorIdx = idx;
       initialLogischeZeile = editorStartZeile;
 
-      // Berechnen, wie weit der Editor nach unten gescrollt starten muss
-      if (initialLogischeZeile > (MAX_R - 4)) {
-        initialStartLine = initialLogischeZeile - 5; // Zentriert den Fehler im Sichtfenster
+      if (initialLogischeZeile > (MAX_R - 4)) {                                               // Berechnen, wie weit der Editor nach unten gescrollt starten muss
+        initialStartLine = initialLogischeZeile - 5;                                          // Zentriert den Fehler im Sichtfenster
         initialCursorY = 16 + ((initialLogischeZeile - initialStartLine) * 8);
       } else {
         initialStartLine = 1;
@@ -861,20 +866,20 @@ FLASHMEM void open_fullscreen_editor(String filename) {
     }
   }
 
-  // Merker für den nächsten normalen Aufruf löschen
-  editorStartZeile = 1;
+  
+  editorStartZeile = 1;                                                                       // Merker für den nächsten normalen Aufruf löschen
 
-  int cursorIdx = initialCursorIdx; //0                                                                         // Start am Dateianfang
+  int cursorIdx = initialCursorIdx;                                                           // Start am Dateianfang
   bool isEditing = true;
 
   int cursorX = 0;
-  int cursorY = initialCursorY;//16;
+  int cursorY = initialCursorY;
   int logischeZeile = initialLogischeZeile;//1;
   int logischeSpalte = 1;
   int blockStartIdx = -1;                                                                     // -1 Aktuell kein Textblock markiert
 
 
-  int startLine = initialStartLine;//1;                                                                          // Dimension Textfenster
+  int startLine = initialStartLine;//1;                                                       // Dimension Textfenster
   int maxSichtbareZeilen = MAX_R - 2;
   int startCol = 1;
   int maxSichtbareSpalten = MAX_C;
@@ -935,7 +940,7 @@ FLASHMEM void open_fullscreen_editor(String filename) {
           }
 
 
-          const char* systemKeywords[] = {"vga", "sd", "math", "hardware_control", "delay", "print", "type",    // Test auf System-Keywords
+          const char* systemKeywords[] = {"sys","vga", "sd", "math",  "hardware_control", "delay", "print", "type",    // Test auf System-Keywords
                                           "pairs", "ipairs", "tostring", "tonumber", "error", "assert", "sqrt", "sin", "cos", "tan", "abs",
                                           "floor", "ceil", "random", "min", "max", "pi", "inkey"
                                          };
@@ -1091,7 +1096,7 @@ FLASHMEM void open_fullscreen_editor(String filename) {
                   }
                 }
 
-                const char* systemKeywords[] = {"vga", "sd", "math", "hardware_control", "delay", "print",
+                const char* systemKeywords[] = {"sys", "vga", "sd", "math", "hardware_control", "delay", "print",
                                                 "type", "pairs", "ipairs", "tostring", "tonumber", "error", "assert", "sqrt", "sin",
                                                 "cos", "tan", "abs", "floor", "ceil", "random", "min", "max", "pi", "inkey"
                                                };
@@ -2176,58 +2181,7 @@ FLASHMEM int lua_vga_text(lua_State* L) {
   lua_pushboolean(L, true); //-- Erfolgs-Rückgabewert für Lua
   return 1;
 }
-/*
-  FLASHMEM int lua_vga_text(lua_State* L) {
-  int argumente = lua_gettop(L);
-  int spalte = cursorX; // Standardwert: Aktuelle Cursor-Spalte (oder x_pos)
-  int zeile = cursorY;  // Standardwert: Aktuelle Cursor-Zeile (oder y_pos)
-  const char* txt = NULL;
 
-  int txtFColor = fColor;
-  int txtBColor = bColor;
-
-  // FALL 1: Es wurden mindestens 3 Argumente uebergeben (spalte, zeile, "text" ...)
-  if (argumente >= 3 && lua_isnumber(L, 1) && lua_isnumber(L, 2) && lua_isstring(L, 3)) {
-    spalte = (int)lua_tonumber(L, 1);
-    zeile = (int)lua_tonumber(L, 2);
-    txt = lua_tostring(L, 3);
-
-    // Optionale Farben auswerten (liegen bei 4 und 5)
-    if (argumente >= 4 && lua_isnumber(L, 4)) txtFColor = (int)lua_tonumber(L, 4);
-    if (argumente >= 5 && lua_isnumber(L, 5)) txtBColor = (int)lua_tonumber(L, 5);
-  }
-  // FALL 2: Es wurde nur der Text uebergeben (Nutzt aktuelle Cursor-Position)
-  else if (argumente >= 1 && lua_isstring(L, 1)) {
-    txt = lua_tostring(L, 1);
-
-    // Optionale Farben auswerten (liegen hier bei 2 und 3)
-    if (argumente >= 2 && lua_isnumber(L, 2)) txtFColor = (int)lua_tonumber(L, 2);
-    if (argumente >= 3 && lua_isnumber(L, 3)) txtBColor = (int)lua_tonumber(L, 3);
-  }
-  else {
-    zeigeFehlerPopup("FEHLER","vga.text(x,y,text[fcol,bcol,breit]) erwartet!");
-    lua_pushboolean(L, false);
-
-    return 0;
-  }
-
-  // --- DER TRICK: Umrechnung von Spalte/Zeile in Pixel (Faktor 8) ---
-  int pixelX = spalte * 8;
-  int pixelY = zeile * 8;
-
-  // Text auf die VGA-Karte zeichnen
-  vga.drawText(pixelX, pixelY, txt, txtFColor, txtBColor, false);
-
-  // OPTIONAL: Den Cursor automatisch hinter den gedruckten Text weiterschieben
-  cursorX = spalte + strlen(txt);
-  if (cursorX >= TERM_COLS) {
-    cursorX = 0;
-    cursorY++; // Einfacher Zeilenumbruch, falls der Text den Rand sprengt
-  }
-
-  return 0;
-  }
-*/
 // 4. Pixel zeichnen: vga.pset(x, y, farbe)
 FLASHMEM int lua_vga_pset(lua_State* L) {
   if (!lua_isnumber(L, 1) || !lua_isnumber(L, 2) || !lua_isnumber(L, 3)) {
@@ -2567,6 +2521,94 @@ void restoreTerminalArea(int x, int y, int w, int h) {
 // ============================================================================
 // TIME - TIMER INTERFACE (Modul: sys)  -- und sonstige Systemdienste
 // ============================================================================
+//Hexmonitor für den PSRAM sys.hexmon(start[,laenge])
+FLASHMEM int lua_sys_hexmon(lua_State* L) {
+  int args = lua_gettop(L);
+  
+  // 1. Parameter prüfen (Startadresse ist Pflicht)
+  if (args < 1 || !lua_isnumber(L, 1)) {
+    zeigeFehlerPopup("Fehler","Startadresse fehlt! Nutzen Sie: sys.hexmem(0x70000000 [, laenge])\n\r");
+    return 0;
+  }
+  
+  // 1. Virtuellen Start-Offset einlesen (Standard: 0x0000)
+  uint32_t virtuellerStart = 0;
+  if (args >= 1 && lua_isnumber(L, 1)) {
+    virtuellerStart = (uint32_t)lua_tonumber(L, 1);
+  }
+
+  // 2. Gewünschte Länge einlesen (Standard: 512 Bytes)
+  uint32_t laenge = 1024;
+  if (args >= 2 && lua_isnumber(L, 2)) {
+    laenge = (uint32_t)lua_tonumber(L, 2);
+  }
+
+  // Der echte physikalische Startpunkt des PSRAMs im Teensy 4.1
+  const uint32_t PSRAM_BASIS = 0x70000000;
+
+  vga_print_str("\n\r--- PSRAM HARDWARE HEX-MONITOR (ESC to Abort) ---\n\r");
+  vga_print_str("Offset    00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  Decoded Text\n\r");
+  vga_print_str("---------------------------------------------------------------------------\n\r");
+
+  char outLine[128];
+  uint32_t aktuellerOffset = virtuellerStart;
+  uint32_t bytesVerarbeitet = 0;
+  int zeilenZaehler = 0;
+  bool laeuft=true;
+  // 3. Speicherbereich in 16-Byte-Schritten durchlaufen
+  while (laeuft){//(bytesVerarbeitet < laenge) {
+    uint32_t verbleibend = laenge - bytesVerarbeitet;
+    int blockGroesse = 16;//(verbleibend > 16) ? 16 : verbleibend;
+
+    // INTERNER INTERRUPT-CHECK: Nach 20 Zeilen (einer Bildschirmseite) pausieren
+    if (zeilenZaehler >= 20) {
+      int taste = wait_key(true); 
+      
+      if (taste == 27) { // 27 entspricht der ESC-Taste
+        laeuft=false;
+        return 0; 
+      }
+      
+      zeilenZaehler = 0; // Zähler für die nächste Seite zurücksetzen
+      vga_print_str("\n\r");
+    }
+
+    // A) Virtuellen Offset links anzeigen (beginnt wunschgemäß bei 00000000)
+    int pos = snprintf(outLine, sizeof(outLine), "%08X  ", aktuellerOffset);
+
+    // B) INTERNE ADDITION: Physikalische Zieladresse im EXTMEM berechnen!
+    uint32_t physikalischeAdresse = PSRAM_BASIS + aktuellerOffset;
+    uint8_t* memPtr = (uint8_t*)physikalischeAdresse;
+
+    // C) 16 Bytes als HEX-Paare formatieren
+    for (int i = 0; i < 16; i++) {
+        pos += snprintf(outLine + pos, sizeof(outLine) - pos, "%02X ", memPtr[i]);
+    }
+
+    pos += snprintf(outLine + pos, sizeof(outLine) - pos, " ");
+
+    // D) Rechten ASCII-Text decodieren
+    for (int i = 0; i < blockGroesse; i++) {
+      char ch = (char)memPtr[i];
+      if (ch >= 32 && ch <= 126) {
+        pos += snprintf(outLine + pos, sizeof(outLine) - pos, "%c", ch);
+      } else {
+        pos += snprintf(outLine + pos, sizeof(outLine) - pos, ".");
+      }
+    }
+
+    snprintf(outLine + pos, sizeof(outLine) - pos, "\n\r");
+    vga_print_str(outLine);
+
+    // Werte für das nächste Paket hochzählen
+    aktuellerOffset += blockGroesse;
+    bytesVerarbeitet += blockGroesse;
+    zeilenZaehler++;
+  }
+
+  vga_print_str("---------------------------------------------------------------------------\n\r");
+  return 0;
+}
 // funktion sys.info()
 FLASHMEM int lua_sys_info(lua_State* L) {
   extern uint8_t external_psram_size;
@@ -2738,7 +2780,7 @@ void setup() {
   lua_pushcfunction(L, sys_get_date); lua_setfield(L, -2, "getdate");
   lua_pushcfunction(L, lua_sys_load); lua_setfield(L, -2, "load");
   lua_pushcfunction(L, lua_sys_info); lua_setfield(L, -2, "info");
-  
+  lua_pushcfunction(L, lua_sys_hexmon);lua_setfield(L, -2, "hexmon");
   // Die Tabelle global unter dem Namen "system" registrieren
   lua_setglobal(L, "sys");
 

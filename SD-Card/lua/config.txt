@@ -1,0 +1,6 @@
+# Dies ist ein Kommentar
+Lautstaerke = 80
+Helligkeit  = 50
+
+// Ein weiterer Kommentar
+Modus = VGA_Mode_3

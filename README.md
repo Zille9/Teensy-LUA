@@ -22,7 +22,7 @@ Fullscreen-Editor (VGA 640x480) mit Syntaxhervorhebung
 Diese Version ist eine Alpha-Version. Verwendung auf eigene Gefahr!!!
 
 ---- Hardware ----
-SD-Card -> Builtin                                                                                                           //
-VGA-Beschaltung: R: 3(2k), 4(1k), 33(470) | G:11(2k), 13(1k), 2(470) | B:10(820), 12(390) | HSync:15(82) | VSync:8 (82)      //
-PCM5102 : BCK: 21, DIN 7, LCK 20  - Kompatibilität zum MCUME-Projekt - noch nicht implementiert
+- SD-Card -> Builtin                                                                                                           
+- VGA-Beschaltung: R: 3(2k), 4(1k), 33(470) | G:11(2k), 13(1k), 2(470) | B:10(820), 12(390) | HSync:15(82) | VSync:8 (82)     
+- PCM5102 : BCK: 21, DIN 7, LCK 20  - Kompatibilität zum MCUME-Projekt - noch nicht implementiert
 

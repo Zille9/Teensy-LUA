@@ -18,8 +18,9 @@ einfache Spiele (Sprites in Planung)
 Implementation der Skripsprache LUA auf dem Microcontroller Teensy 4.1
 (ARM Cortex-M7-Prozessor mit 600 MHz) mit Unterstützung des SD-Kartenzugriff's (builtin)
 VGA-Ausgabe über Marc Harveight's VGA_t4-Library (Thank you very much for this useful library.)
-Fullscreen-Editor (VGA 640x480) mit Syntaxhervorhebung
-Diese Version ist eine Alpha-Version. Verwendung auf eigene Gefahr!!!
+Fullscreen-Editor (VGA 640x480) mit Syntaxhervorhebung.
+
+--- Diese Version ist eine Alpha-Version. Verwendung auf eigene Gefahr!!! ---
 
 ---- Hardware ----
 - SD-Card -> Builtin                                                                                                           

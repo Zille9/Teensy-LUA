@@ -14,6 +14,10 @@ einfache Spiele (Sprites in Planung)
 
 ![Teensy board](Image/hanoi.JPG)
 
+Verwendung von Lua-Modulen über require
+
+![Teensy board](Image/dashboard.JPG)
+
 # LUA 5.5 auf dem Teensy 4.1 (8MB PSRAM) mit SD-Card und VGA
 Implementation der Skripsprache LUA auf dem Microcontroller Teensy 4.1
 (ARM Cortex-M7-Prozessor mit 600 MHz) mit Unterstützung des SD-Kartenzugriff's (builtin)

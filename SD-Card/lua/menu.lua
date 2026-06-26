@@ -16,7 +16,8 @@ local spiele = {
     { name = "Snake (Klassiker)",    datei = "snake.lua" },
     { name = "Tuerme von Hanoi",     datei = "hanoi.lua" },
     { name = "Pong gegen Teensy",    datei = "pong.lua" },
-    { name = "Retro Climber",        datei = "climber.lua" }
+    { name = "Retro Climber",        datei = "climber.lua" },
+    { name = "Breakout",             datei = "breakout.lua"}
 }
 local taste = 0 --- Tastencode ---
 

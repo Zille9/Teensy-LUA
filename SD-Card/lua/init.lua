@@ -8,7 +8,7 @@ vga.cls()
 
 -- 2. Einen schicken Willkommens-Bildschirm zaubern
 vga.rect(10, 10, 320, 50, 240) -- Blauer Rahmen oben
-vga.text(4, 2, "*** LUA COMPUTER SYSTEM V1.0 ***", 187, 1)
+vga.text(4, 2, "*** LUA COMPUTER SYSTEM V1.2 ***", 187, 1)
 vga.text(2, 4, "Teensy 4.1 inside - PSRAM & VGA aktiv", 83, 1)
 vga.pos(0,8)
 

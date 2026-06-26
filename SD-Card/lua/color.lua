@@ -12,6 +12,6 @@ end
 vga.color(fcolor,bcolor)
 
 ---- Naechste Zeile ----------
-print(" ")
-
-
+print("\n\r")
+print("-Taste-")
+waitkey()

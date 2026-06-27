@@ -142,8 +142,12 @@ function TableView.zeigeInteraktiv(titel, headers, daten)
            taste = inkey() --waitkey(false)
          
         end
+
+        vga.print(taste)
+
         if taste == 27 then -- ESC-Taste
             aktiv = false
+                       
         elseif taste == 218 then -- PFEIL TASTE HOCH: Eine Seite zurückblättern
             startIdx = startIdx - MAX_ZEILEN
             if startIdx < 1 then startIdx = 1 end
@@ -204,13 +208,12 @@ function TableView.zeigeSelektor(titel, headers, daten)
         while taste < 1 do
               taste = inkey() --waitkey(false)
         end
+       
+
         if taste == 27 then -- ESC: Abbrechen
             vga.cls()
             return nil
-
-        elseif taste == 13 or taste > 32 and taste < 126 then
-            return cursorZeile,taste -- jede andere Taste a-z,A-Z,0-9 und enter  
-
+        
         elseif taste == 218 then -- PFEIL HOCH: Balken nach oben bewegen
             if cursorZeile > 1 then
                 cursorZeile = cursorZeile - 1
@@ -227,10 +230,50 @@ function TableView.zeigeSelektor(titel, headers, daten)
                     startIdx = startIdx + 1
                 end
             end
-        end
+        
+        elseif taste == 211 then --Page UP
+            
+            if cursorZeile > 1 then
+               cursorZeile = cursorZeile - MAX_ZEILEN
+               startIdx = startIdx - MAX_ZEILEN
+
+               if cursorZeile < 1 then 
+                  cursorZeile = 1 
+               end
+               if startIdx < 1 then 
+                  startIdx = 1 
+               end
+            end   
+        elseif taste == 210 then -- HOME
+               cursorZeile = 1
+               startIdx = 1               
+
+        elseif taste == 213 then -- END
+               cursorZeile = #daten
+               startIdx = #daten - MAX_ZEILEN +1
+
+        elseif taste == 214 then -- Page DOWN
+            if cursorZeile < #daten then
+               cursorZeile = cursorZeile + MAX_ZEILEN
+               startIdx = startIdx + MAX_ZEILEN
+
+               if cursorZeile > #daten then cursorZeile = #daten end
+               if startIdx > #daten - MAX_ZEILEN + 1 then
+                  startIdx = #daten - MAX_ZEILEN +1
+               end
+               if startIdx < 1 then startIdx = 1 end
+            end                 
+
+        elseif taste == 212 then -- DEL
+            return cursorZeile, taste
+
+        elseif taste == 13 or taste > 31 and taste < 206 then
+            return cursorZeile, taste
+
+        end -- if taste 
         
         delay(16)
-    end
-end
+    end -- while
+end -- function
 -- Das fertige Modul an das require()-System übergeben
 return TableView

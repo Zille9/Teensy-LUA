@@ -1,6 +1,6 @@
 ---- neues skript -----
 local fcolor, bcolor = vga.gcolor()
-
+vga.cls(bcolor)
 for i=0,255 do
   vga.color(0,i)
   vga.text(" ")

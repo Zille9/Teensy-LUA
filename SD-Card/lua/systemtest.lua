@@ -6,12 +6,12 @@ vga.cls() -- Leert Schirm und termBuffer!
 vga.text(2, 1, "--- SPEICHER- UND GRAFIKVALIDIERUNG ---",0,90)
 
 -- Geometrische Formen zeichnen (Pixel-Koordinaten)
-vga.rect(16, 32, 150, 100, 252) -- Leerer gelber Rahmen
-vga.box(180, 32, 300, 100, 190)  -- Gefuellte rote Box
+vga.rect(16, 32, 150, 100, math.random(255)) -- Leerer Rahmen
+vga.box(180, 32, 300, 100, math.random(255))  -- Gefuellte Box
 
-vga.ellipse(80, 170, 40, 30, 205)       -- Leere hellgruene Ellipse
-vga.fillellipse(240, 170, 50, 25, 76) -- Gefuellte blaue Ellipse
-delay(5000)
+vga.ellipse(80, 170, 40, 30, math.random(255))       -- Leere Ellipse
+vga.fillellipse(240, 170, 50, 25, math.random(255)) -- Gefuellte Ellipse
+delay(1000)
 
 -- mathematische Funktionen ------
 vga.pos(10,30)
@@ -25,12 +25,12 @@ vga.pos(18,32)
 a=(5+6)/7
 print(a)
 
-delay(5000)
+delay(3000)
 
 
 -- Text dynamisch an die aktuelle Position haengen
-vga.cls()
-vga.text("Dateien auf SD-Karte:")
+-- vga.cls()
+-- vga.text("Dateien auf SD-Karte:")
 
 -- Moduluebergreifend arbeiten: Verzeichnis sauber gefiltert ausgeben!
-sd.ls("*.lua")
+-- sd.ls("*.lua")

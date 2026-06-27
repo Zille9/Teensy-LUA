@@ -181,8 +181,8 @@ function SpaceInvaders.updateLogik()
             -- Treffer! Schuss entfernen und Leben abziehen
             table.remove(alienProjektile, apIdx)
             leben = leben - 1
-            
-            -- [Hier könnte später ein Explosions-Sound abgespielt werden]
+            sprite.hide(SLOT_ALIEN_LASER)
+           -- [Hier könnte später ein Explosions-Sound abgespielt werden]
             break
         end
     end

@@ -50,7 +50,7 @@ while running do
         -- Abfrage Ihrer C++ Eckenprüfung: Was befindet sich unter den Füßen?
         local kachelUnten = sprite.get_tile(playerX, testY)
 
-        if kachelUnten > 0 and kachelUnten ~= MUENZ_ID then
+        if kachelUnten == 2 and kachelUnten ~= MUENZ_ID then
             -- Kollision mit solidem Boden! Fall stoppen und Spieler erden
             velocityY = 0
             istAmBoden = true
@@ -100,7 +100,7 @@ while running do
                 end
                 -- --- F) STARTEN-RENDERING (Alles im unsichtbaren Puffer vorbereiten) ---
                 -- Das Spieler-Sprite (z.B. Grafik-Index 20 aus dem geladenen BMP) zeichnen
-                sprite.draw(playerX, playerY, 1)
+                sprite.draw(playerX, playerY-16, 1)
                 -- Score-Text fixiert in der oberen linken Ecke des Bildschirms einblenden
                 vga.text(2, 1, "SCORE: " .. string.format("%04d", score), 255, 0)
                 -- ====================================================================

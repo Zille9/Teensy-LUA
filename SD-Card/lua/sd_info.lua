@@ -2,7 +2,7 @@ local dateien = sd.listfile()
 local gesamtGroesseKB = 0
 local dateiZaehler = 0
 local ordnerZaehler = 0
-
+vga.cls()
 for i = 1, #dateien do
     if dateien[i][3] == "ORDNER" then
         ordnerZaehler = ordnerZaehler + 1

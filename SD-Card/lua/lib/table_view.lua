@@ -274,6 +274,10 @@ function TableView.zeigeSelektor(titel, headers, daten)
         
         delay(16)
     end -- while
+
+    --return nil, 0 -- Absicherung
+
 end -- function
--- Das fertige Modul an das require()-System übergeben
+
 return TableView
+

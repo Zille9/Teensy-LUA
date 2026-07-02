@@ -86,6 +86,7 @@ end
 --- Farben wieder herstellen ---
 vga.color(fcolor,bcolor)
 --- Home-Position --------------
+collectgarbage("collect")
 vga.pos(0,1)
 vga.print((sys.timer()-dauer)/1000)
 vga.print(" sek.")

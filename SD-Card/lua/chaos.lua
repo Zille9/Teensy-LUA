@@ -15,7 +15,7 @@ local ecken = {
 
 -- Startpunkt irgendwo in der Mitte
 local curX = 320
-local curY = 240
+local curY = 120
 
 -- Wir zeichnen 50.000 Punkte
 for i = 1, 50000 do
@@ -39,4 +39,4 @@ for i = 1, 50000 do
     end
 end
 
-vga.pos(0, 0)
+vga.pos(0, 1)

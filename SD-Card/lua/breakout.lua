@@ -250,8 +250,9 @@ while spielLaeuftNoch do
         end
     end
     
-    delay(2) -- System-Schonung
+    --delay(2) -- System-Schonung
 end
 
 -- Nach dem Beenden Schirm putzen fürs Terminal
+collectgarbage("collect")
 vga.cls()

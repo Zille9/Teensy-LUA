@@ -1,29 +1,31 @@
+package.loaded["table_view"] = nil
 local tableview = require("table_view")
 local fc = 252
 local bc = 64
 vga.cls()
 vga.setTitle("ENTER=Run/CD | F1=Edit | F2=Cat | BACKSPACE=CD.. | DEL=Del | ESC=Ende")
 
---vga.text(1,2,"ENTER=Run/CD | F1=Edit | F2=Cat | BACKSPACE=CD.. | DEL=Del | ESC=Ende",fc,bc)
-
 local spalten = { "Dateiname", "Groesse", "Typ" }
 local dateien = sd.listfile()
 
 -- Wir holen uns den aktuellen Pfad live aus dem Core
 local aktuellerPfad = sd.pwd()
-local titel = "DATEI-MANAGER | ORDNER: " .. aktuellerPfad
+local titel = " DATEI-MANAGER "
+
+vga.setStatus("Pfad: " .. aktuellerPfad)
 
 local naechsteAktion = "TERMINAL" 
 local zielOrdner     = nil
 local dateiZumStarten = nil
 
 local imManager = true
+
 while imManager do
 
     -- Der universelle Selektor gibt uns nun JEDEN Tastendruck zurueck
     local gewaehlteZeile, gedrueckteTaste = tableview.zeigeSelektor(titel, spalten, dateien)
 
-    -- vga.text(1,49,gedrueckteTaste,255,1,false) -- Debug
+    --vga.text(1,49,gedrueckteTaste,255,1,false) -- Debug
 
     -- FALL 1: ESC gedrückt
     if not gewaehlteZeile or gedrueckteTaste == 27 then
@@ -37,8 +39,9 @@ while imManager do
             naechsteAktion = "WECHSEL_ORDNER"
             imManager = false
         else
-            vga.text(2, 2, "Bereits im Hauptverzeichnis!", 196, 0)
-            delay(500)
+            vga.setStatus("Bereits im Hauptverzeichnis!", 196, 0)
+            delay(1000)
+            vga.setStatus("Pfad: " .. aktuellerPfad)
         end
     
     -- FALL 3: F5 FUER LOESCHEN (DELETE) MIT SICHERHEITSABFRAGE
@@ -89,8 +92,9 @@ while imManager do
                         
                         -- loeschen und die Tabelle im naechsten Frame neu drueberzeichnen
                         vga.cls() 
-                        vga.text(1,2,"ENTER=Run/CD | F1=Edit | F2=Cat | F4=CD.. | DEL=Del | ESC=Ende",fc,bc)
-                    end
+                        vga.setTitle("ENTER=Run/CD | F1=Edit | F2=Cat | F4=CD.. | DEL=Del | ESC=Ende",fc,bc)
+                        vga.setStatus("Pfad: " .. aktuellerPfad)
+                      end
                     delay(10) 
                 end
                 
@@ -141,7 +145,7 @@ end
 -- DIE ENTSCHEIDUNGS-WEICHE (Vollkommen entkoppelt)
 -- ============================================================================
 if naechsteAktion == "WECHSEL_ORDNER" then
-    vga.pos(1,48)
+    --vga.pos(1,48)
     sd.cd(zielOrdner)                  
     package.loaded["table_view"] = nil 
     run("/lua/fileman.lua")                 
@@ -155,6 +159,8 @@ elseif naechsteAktion == "START_DATEI" then
     if chunk then chunk() end
 
 elseif naechsteAktion == "TERMINAL" then
+    collectgarbage("collect")
+
     vga.cls()
     sd.cd("/lua") 
     print(" ")

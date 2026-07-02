@@ -16,7 +16,7 @@ local spielerY  = 420
 local score     = 0
 local leben     = 3
 local alienRichtung = 1  -- 1 = Rechts, -1 = Links
-local alienSpeed    = 2
+local alienSpeed    = 1
 
 -- Tabellen für dynamische Spielobjekte
 local aliens     = {}
@@ -192,10 +192,10 @@ end
 -- Zeichnet alle Objekte in den flackerfreien Hintergrund-Puffer
 local function rendern()
     -- 1. Hintergrund mit Ihrer Kachel-Engine schwärzen
-    sprite.cls(0)
+    --sprite.cls(0)
     
     -- 2. HUD (Score) ganz oben platzieren
-    vga.text(2, 1, "SCORE: " .. string.format("%04d", score), 255, 0)
+    vga.text(1, 1, "SCORE: " .. string.format("%04d", score), 255, 0)
     vga.text(16, 1, "LEBEN: " .. string.rep("X", leben), 196, 0) -- Zeichnet "XXX", "XX" oder "X"
     vga.text(32, 1, "=== SPACE INVADERS ===", 47, 0)
     vga.line(0, 18, 640, 18, 40)
@@ -260,6 +260,7 @@ local function rendern()
             vga.text(24, 30, "Druecke eine Taste fuer Neustart", 255, 0)
         end
     end
+    
     return "SPIELT_NOCH"
 end
 
@@ -287,10 +288,10 @@ function SpaceInvaders.start()
             end
         else 
             if taste == 216 then -- PFEIL LINKS
-            spielerX = spielerX - 5
+            spielerX = spielerX - 8
                if spielerX < 10 then spielerX = 10 end
             elseif taste == 215 then  -- PFEIL RECHTS
-               spielerX = spielerX + 5
+               spielerX = spielerX + 8
                if spielerX > 614 then spielerX = 614 end
             elseif taste == 32 then -- LEERTASTE: Laser abfeuern (mit Cooldown)
                local jetzt = sys.timer()
@@ -310,15 +311,20 @@ function SpaceInvaders.start()
         -- Schiebt das gesamte Bild ruckel- und flackerfrei auf den VGA-Monitor!
         sprite.update()
 
-        delay(16) -- Framerate auf solide ~60 FPS einpegeln
+        --delay(16) -- Framerate auf solide ~60 FPS einpegeln
     end
     
     -- Beim Verlassen Bildschirm aufräumen
     for _, a in ipairs(aliens) do sprite.hide(a.hw_id) end
+    for i= 0, 64 do 
+        sprite.hide(i)
+    end
+   
     sprite.hide(0)
     sprite.cls(0)
     sprite.update()
 end
-
+SpaceInvaders.start()
 -- Das Modul an das require()-System übergeben
+collectgarbage("collect")
 return SpaceInvaders

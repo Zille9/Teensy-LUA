@@ -10,7 +10,7 @@ while running do
      end
 end
 
-vga.openWindow(0,200,200,160,100,255,4,"Benchmark",b .. " Zeilen/sek.",3)
+vga.openWindow(0,200,100,160,70,255,4,"Benchmark",b .. " Zeilen/sek.",3)
 
 
 if waitkey(0) > 0 then
@@ -18,3 +18,4 @@ if waitkey(0) > 0 then
    vga.closeWindow(0)
 
 end
+collectgarbage("collect")

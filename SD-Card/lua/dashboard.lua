@@ -60,7 +60,7 @@ while laufzeitAktiv do
         gauge.updateWert(1, 170, 260, 85, cpu_temp, 0, 100)
         
         -- Tacho 2 (Rechts): Aktualisiert nur Nadel 2 mit dem Heap-Speicher
-        gauge.updateWert(2, 470, 260, 85, freier_heap, 0, 512)
+        gauge.updateWert(2, 470, 260, 85, freier_heap, 0, 1024)
         
     end
 
@@ -68,4 +68,5 @@ while laufzeitAktiv do
 end
 
 -- Nach dem Verlassen Schirm putzen fürs Terminal
+collectgarbage("collect")
 vga.cls()

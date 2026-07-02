@@ -244,7 +244,7 @@ while spielLaeuftNoch do
         end
     end
     
-    delay(5)
+    --delay(5)
 end
 
 -- Zurück zum Terminal

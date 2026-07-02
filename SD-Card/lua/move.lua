@@ -2,13 +2,13 @@
 -- LUA RETRO-SAMMELSPIEL (640x480)
 -- ===================================================
 
-vga.cls()
-
 local fcolor, bcolor = vga.gcolor()
+
+vga.cls(bcolor)
 
 -- 1. SPIELER-EINSTELLUNGEN
 local playerX = 320
-local playerY = 240
+local playerY = 120
 local playerSize = 16
 local playerColor = 127 -- Cyan
 local speed = 10        -- Bewegungsgeschwindigkeit
@@ -44,7 +44,7 @@ spawnFood()
 -- Hilfsfunktion für das Score-Update oben links
 local function drawScore()
     vga.pos(2, 0)
-    vga.text("SCORE: " .. score .. "  |  Pfeiltasten: Bewegen | ESC: Exit",255,1,true)
+    vga.text("SCORE: " .. score .. "  |  Pfeiltasten: Bewegen | ESC: Exit",255,bcolor,true)
 end
 
 drawScore()
@@ -88,7 +88,7 @@ while running do
         drawScore() -- Punkteanzeige aktualisieren
         
         -- Altes Futter visuell löschen (mit schwarzem Kreis überschreiben)
-        vga.fillellipse(foodX, foodY, foodSize, foodSize, 1, 1)
+        vga.fillellipse(foodX, foodY, foodSize, foodSize, bcolor, bcolor)
         
         -- Neues Futter generieren
         spawnFood()

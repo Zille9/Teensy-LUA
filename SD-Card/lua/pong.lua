@@ -14,7 +14,7 @@ local FARBE_BRAUN   = 104
 local FeldX1 = 40
 local FeldY1 = 40
 local FeldX2 = 600
-local FeldY2 = 400
+local FeldY2 = 440
 
 local SchlaegerBreite = 10
 local SchlaegerHoehe  = 60
@@ -237,7 +237,7 @@ while spielLaeuftNoch do
         end
     end
     
-    delay(5)
+    --delay(5)
 end
     
 

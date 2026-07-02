@@ -236,7 +236,7 @@ while spielLaeuftNoch do
         end
     end
     
-    delay(2) -- Minimale Entlastung für das OS-Multitasking
+    --delay(2) -- Minimale Entlastung für das OS-Multitasking
 end
 
 -- Nach dem regulären Verlassen (ESC) den Bildschirm für das Terminal säubern

@@ -7,7 +7,7 @@
 local MUENZ_ID = 5      -- Kachel-ID für die einsammelbare Münze
 local GRAVITY  = 1    -- Schwerkraft-Beschleunigung pro Frame
 local JUMP_IMPULS = -16 -- Sprungkraft nach oben
-local LAUF_GESCHW = 4   -- Laufgeschwindigkeit in Pixeln
+local LAUF_GESCHW = 2   -- Laufgeschwindigkeit in Pixeln
 
 -- --- START-VARIABLEN (Spieler-Koordinaten auf dem Bildschirm) ---
 local playerX   = 100
@@ -113,10 +113,11 @@ while running do
   sprite.animate(5, 37, 5)
   sprite.update()
 
-  delay(16) -- Framerate auf saubere ~60 FPS drosseln
+  --delay(16) -- Framerate auf saubere ~60 FPS drosseln
 end
 
 -- Nach dem Drücken von ESC: Bildschirm säubern und zurück zum Terminal wechseln
 sprite.hide(1)
 sprite.cls(1)
 sprite.update()
+collectgarbage("collect")

@@ -166,6 +166,7 @@ while Spiellaeuft do
     end
     
     -- Kurze Entlastung für das Teensy-System (Nutzt Ihren C++ delay-Wrapper)
-    delay(5) 
+    --delay(5) 
 end
 
+collectgarbage("collect")

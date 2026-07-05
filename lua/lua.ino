@@ -3049,7 +3049,6 @@ FLASHMEM int lua_sys_info(lua_State* L) {
 
   // Text direkt auf die VGA-Konsole ausgeben
   vga_print_str(monBuf);
-
   return 0;
 }
 
@@ -3508,8 +3507,8 @@ FLASHMEM void scroll_map_h(int direction) {
     for (int i = 0; i < TILES_ROWS; i++) {
       tempColumn[i] = mapPtrL0[i] + 16;
     }
-    int mapColToLoad = (tileColIndex + TILES_COLS - 1) ;//% 960; // Springt nach 999 zurück auf 0
-    if (mapColToLoad > 798) {
+    int mapColToLoad = (tileColIndex + TILES_COLS - 1) ;
+    if (mapColToLoad > 478) { //bei 500 Lines ist 479 der nahtlose übergang zu 0 (480 / 16 Tiles = 30 Bildschirmseiten) 
       currentHScroll0 = 0;
       mapColToLoad = 0;
       mapPtrL0 = 0;

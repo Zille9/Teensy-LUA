@@ -21,6 +21,9 @@
 //                                                                                                                                                //
 //                                                                                                                                                //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 07.07.2026                         -SPI-Funktion hinzugefügt (begin, settings, write, writeBuffer, read, readBuffer)
+//                                    -vga.bmpLoad zum Anzeigen von Windows-BMP-Dateien hinzugefügt -> vga.bmpLoad(x,y,"Dateiname", skalierung [<1 vergössern, >1 verkleinern])
+//
 // 29.06.2026                         -Sound wieder deaktiviert, es ist einfach zuwenig RAM übrig (nur 8kB), für eine stabile Lua-Umgebung ist das zu wenig
 //                                    -wenn überhaupt, wird Sound nur extern möglich sein - entweder ein MP3 Modul oder MIDI?
 //
@@ -51,6 +54,15 @@
 #include <SD.h>
 #include <SPI.h>
 #include <malloc.h>
+
+// 2. SPI-Einstellungen setzen (Geschwindigkeit in Hz, Bit-Order, Modus)
+// Standard: 4MHz, MSBFIRST, SPI_MODE0
+static SPISettings currentSettings(4000000, MSBFIRST, SPI_MODE0); // für Lua-SPI-Funktion
+
+// Bis zu 4 gleichzeitig geöffnete Dateien erlauben (reicht für Musik + Skripte völlig)
+#define MAX_OPEN_FILES 4
+static File openFiles[MAX_OPEN_FILES];
+
 
 
 extern "C" {
@@ -1222,7 +1234,8 @@ FLASHMEM void open_fullscreen_editor(String filename) {
 
 
           const char* systemKeywords[] = {"sys", "vga", "sd", "math",  "io_control", "sprite", "delay", "delay_us", "print", "type",   // Test auf System-Keywords
-                                          "pairs", "ipairs", "tostring", "tonumber", "error", "assert", "inkey", "run", "write", "waitkey", "edit",
+                                          "pairs", "ipairs", "tostring", "tonumber", "error", "assert", "inkey", "run", "write", "waitkey", 
+                                          "edit", "spi", "dht_read"
                                          };
 
           for (const char* skw : systemKeywords) {
@@ -1373,7 +1386,7 @@ FLASHMEM void open_fullscreen_editor(String filename) {
 
                 const char* systemKeywords[] = {"sys", "vga", "sd", "math", "io_control", "sprite", "delay", "delay_us",
                                                 "print", "type", "pairs", "ipairs", "tostring", "tonumber", "error", "assert", 
-                                                "inkey", "run", "write", "waitkey", "edit"
+                                                "inkey", "run", "write", "waitkey", "edit", "spi", "dht_read"
                                                };
 
                 for (const char* skw : systemKeywords) {
@@ -1810,6 +1823,65 @@ char_processed:
 // IN/OUT/PWM/AIN HARDWARE INTERFACE
 // ============================================================================
 FLASHMEM int lua_io_control(lua_State* L) {
+  // 1. Parameter-Prüfung: Pin (Zahl) und Modus (String) müssen da sein
+  if (!lua_isnumber(L, 1) || !lua_isstring(L, 2)) {
+    zeigeFehlerPopup(PSTR("FEHLER"), PSTR("io_control(pin, MODUS, [WERT])"));
+    lua_pushboolean(L, false);
+    return 1;
+  }
+
+  int pin = (int)lua_tonumber(L, 1);
+  const char* modus = lua_tostring(L, 2); 
+
+  bool istDigitalInput = false;
+  bool istAnalogInput = false;
+
+  // 2. Pin-Modus einstellen 
+  if (strcmp(modus, "OUTPUT") == 0) {
+    pinMode(pin, OUTPUT);
+  } else if (strcmp(modus, "INPUT") == 0) {
+    pinMode(pin, INPUT);
+    istDigitalInput = true;
+  } else if (strcmp(modus, "INPUT_PULLUP") == 0) {
+    pinMode(pin, INPUT_PULLUP);
+    istDigitalInput = true;
+  } else if (strcmp(modus, "ANALOG") == 0 || strcmp(modus, "ANALOG_INPUT") == 0) {// pinMode ist für analogRead() nicht zwingend nötig,stellt aber sicher, dass digitale Treiberstufen deaktiviert werden.
+    pinMode(pin, INPUT_DISABLE); 
+    istAnalogInput = true;
+  }
+
+  if (lua_gettop(L) >= 3) {                                                       // Wert schreiben (nur wenn ein 3. Argument auf dem Stack liegt)
+    if (lua_isnumber(L, 3)) {
+      int analogWert = (int)lua_tonumber(L, 3);
+      analogWrite(pin, analogWert);                                               // PWM-Ausgabe
+    } 
+    else if (lua_isstring(L, 3)) {
+      const char* wertStr = lua_tostring(L, 3);
+      if (strcmp(wertStr, "HIGH") == 0 || strcmp(wertStr, "1") == 0) {
+        digitalWrite(pin, HIGH);
+      } else if (strcmp(wertStr, "LOW") == 0 || strcmp(wertStr, "0") == 0) {
+        digitalWrite(pin, LOW);
+      }
+    }
+  }
+
+  if (istDigitalInput) {
+    int sensorWert = digitalRead(pin);
+    lua_pushinteger(L, sensorWert);
+    return 1;                                                                     // 0 oder 1 an zurückgeben
+  } 
+  
+  if (istAnalogInput) {
+    int analogSensorWert = analogRead(pin);                                       // Liest die analoge Spannung (0-1023) [2]
+    lua_pushinteger(L, analogSensorWert);
+    return 1;                                                                     // Analogwert zurückgeben
+  }
+
+  return 0;                                                                       // reine OUTPUT-Befehle
+}
+
+/*
+FLASHMEM int lua_io_control(lua_State* L) {
   // Parameter-Prüfung: Wir erwarten 3 Argumente (Zahl, String, String/Zahl)
   if (!lua_isnumber(L, 1) || !lua_isstring(L, 2)) {
     zeigeFehlerPopup(PSTR("FEHLER"), PSTR("io_control(pin, \"MODUS\", \"WERT\")"));
@@ -1854,6 +1926,157 @@ FLASHMEM int lua_io_control(lua_State* L) {
 
   return 0; 
 }
+*/
+
+
+//****************************************** LUA-SPI - Funktionen **********************************************
+
+// 1. SPI initialisieren
+int lua_spi_begin(lua_State* L) {
+  SPI1.setMISO(39);   // Pin 1 festlegen für MISO1
+  SPI1.setMOSI(26);  // Pin 26 festlegen für MOSI1
+  SPI1.setSCK(27);   // Pin 27 festlegen für SCK1
+  
+  SPI1.begin();      // Startet den zweiten Hardware-Bus
+  return 0;
+}
+
+//spi.settings(speed, spi_mode (0-3))
+int lua_spi_settings(lua_State* L) {
+  uint32_t speed = (uint32_t)luaL_optinteger(L, 1, 4000000);
+  int mode = (int)luaL_optinteger(L, 2, 0); // Modus 0, 1, 2 oder 3
+  
+  uint8_t spiMode = SPI_MODE0;
+  if (mode == 1) spiMode = SPI_MODE1;
+  else if (mode == 2) spiMode = SPI_MODE2;
+  else if (mode == 3) spiMode = SPI_MODE3;
+
+  currentSettings = SPISettings(speed, MSBFIRST, spiMode);
+  return 0;
+}
+
+
+
+inline int handle_cs_start(lua_State* L, int argNum) {
+  if (lua_gettop(L) >= argNum && lua_isnumber(L, argNum)) {
+    int csPin = (int)lua_tonumber(L, argNum);
+    pinMode(csPin, OUTPUT);
+    digitalWrite(csPin, LOW);
+    return csPin;
+  }
+  return -1; // Kein CS-Pin übergeben
+}
+
+// Hilfsfunktion: Setzt den CS-Pin wieder auf HIGH
+inline void handle_cs_end(int csPin) {
+  if (csPin != -1) {
+    digitalWrite(csPin, HIGH);
+  }
+}
+
+// 1. Einzelnes Byte senden/empfangen mit optionalem CS-Pin
+// Lua-Aufruf: spi.write(byte, [cs_pin])
+int lua_spi_write(lua_State* L) {
+  if (!lua_isnumber(L, 1)) {
+    lua_pushinteger(L, 0);
+    return 1;
+  }
+  uint8_t dataOut = (uint8_t)lua_tonumber(L, 1);
+  
+  // CS-Pin prüfen und aktivieren (Argument 2)
+  int csPin = handle_cs_start(L, 2);
+
+  SPI1.beginTransaction(currentSettings);
+  uint8_t dataIn = SPI.transfer(dataOut);
+  SPI1.endTransaction();
+  
+  // CS-Pin wieder deaktivieren
+  handle_cs_end(csPin);
+  
+  lua_pushinteger(L, dataIn);
+  return 1;
+}
+
+// 2. Block-Transfer mit optionalem CS-Pin
+// Lua-Aufruf: spi.writeBuffer(tabelle, [cs_pin])
+int lua_spi_write_buffer(lua_State* L) {
+  if (!lua_istable(L, 1)) {
+    luaL_error(L, "Argument 1 muss eine Tabelle (Array) sein!");
+    return 0;
+  }
+
+  size_t len = lua_rawlen(L, 1);
+  if (len == 0) return 0;
+
+  // Puffer auf dem Stack anlegen
+  uint8_t* buffer = (uint8_t*)alloca(len);
+
+  // Daten kopieren
+  for (size_t i = 1; i <= len; i++) {
+    lua_rawgeti(L, 1, i);
+    buffer[i - 1] = (uint8_t)lua_tointeger(L, -1);
+    lua_pop(L, 1);
+  }
+
+  // CS-Pin prüfen und aktivieren (Argument 2)
+  int csPin = handle_cs_start(L, 2);
+
+  SPI1.beginTransaction(currentSettings);
+  SPI1.transfer(buffer, len);
+  SPI1.endTransaction();
+
+  // CS-Pin wieder deaktivieren
+  handle_cs_end(csPin);
+
+  // Daten an Lua zurückgeben
+  lua_newtable(L);
+  for (size_t i = 0; i < len; i++) {
+    lua_pushinteger(L, buffer[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+
+  return 1;
+}
+
+// Lua-Aufruf: local byte = spi.read([dummy_byte], [cs_pin])
+int lua_spi_read(lua_State* L) {
+  uint8_t dummyByte = (uint8_t)luaL_optinteger(L, 1, 0x00);                           // Optionale Parameter abholen (Standard: Dummy-Byte = 0x00, CS-Argument an Position 2)
+
+  int csPin = handle_cs_start(L, 2);
+  SPI1.beginTransaction(currentSettings);
+  uint8_t dataIn = SPI.transfer(dummyByte);                                           // Sendet Dummy, empfängt echten Wert
+  SPI1.endTransaction();
+  handle_cs_end(csPin);
+
+  lua_pushinteger(L, dataIn);                                                         // Gibt das gelesene Byte an Lua zurück
+  return 1;
+}
+
+// 2. Mehrere Bytes am Stück in eine Tabelle lesen mit optionalem CS-Pin
+// Lua-Aufruf: local tabelle = spi.readBuffer(anzahl_bytes, [dummy_byte], [cs_pin])
+int lua_spi_read_buffer(lua_State* L) {
+  size_t len = (size_t)luaL_checkinteger(L, 1);                                       // Wie viele Bytes sollen gelesen werden?
+  if (len == 0) return 0;
+
+  uint8_t dummyByte = (uint8_t)luaL_optinteger(L, 2, 0x00);
+  int csPin = handle_cs_start(L, 3);                                                  // CS-Pin ist hier das 3. Argument
+
+  uint8_t* buffer = (uint8_t*)alloca(len);                                            // Temporären Puffer auf dem Stack anlegen und mit Dummy-Bytes füllen
+  memset(buffer, dummyByte, len);
+
+  SPI1.beginTransaction(currentSettings);
+  SPI1.transfer(buffer, len);                                                          // überschreibt den Puffer mit den Daten vom Sensor
+  SPI1.endTransaction();
+  handle_cs_end(csPin);
+  lua_newtable(L);                                                                    // Daten als Lua-Tabelle zurückgeben
+  for (size_t i = 0; i < len; i++) {
+    lua_pushinteger(L, buffer[i]);
+    lua_rawseti(L, -2, i + 1);
+  }
+
+  return 1;
+}
+
 //****************************************** LUA-SD - Funktionen **********************************************
 // C++ Brücke: Lädt ein Lua-Skript von der SD-Karte direkt in den Interpreter
 FLASHMEM int lua_sys_load(lua_State* L) {
@@ -2235,7 +2458,7 @@ FLASHMEM int lua_sd_exists(lua_State* L) {
   lua_pushboolean(L, existiert);
   return 1;
 }
-
+/*
 // 9. Funktion für sd.write(dateiname, text) -> Überschreiben
 FLASHMEM int lua_sd_write(lua_State* L) {
   const char* dateiname = luaL_checkstring(L, 1);
@@ -2258,7 +2481,7 @@ FLASHMEM int lua_sd_write(lua_State* L) {
   }
   return 1;
 }
-
+*/
 // 10. Funktion für sd.append(dateiname, text) -> Anhängen
 FLASHMEM int lua_sd_append(lua_State* L) {
   const char* dateiname = luaL_checkstring(L, 1);
@@ -2436,6 +2659,147 @@ FLASHMEM int lua_sd_pwd(lua_State* L) {
   return 1; 
 }
 
+
+// Hilfsfunktion: Findet einen freien Slot für eine Datei
+static int get_free_file_slot() {
+  for (int i = 0; i < MAX_OPEN_FILES; i++) {
+    if (!openFiles[i]) return i;
+  }
+  return -1; // Alle Slots voll
+}
+
+// --- LUA BRÜCKENFUNKTIONEN ---
+/*
+// 1. Datei prüfen: local existiert = sd.exists("datei.txt")
+int l_sd_exists(lua_State* L) {
+  const char* dateiname = luaL_checkstring(L, 1);
+  String fullPath = resolve_lua_path(dateiname);
+  lua_pushboolean(L, SD.exists(fullPath.c_str()));
+  return 1;
+}*/
+
+// 2. Datei öffnen: local fileHandle = sd.open("song.mp3", "r") 
+// (Gibt bei Erfolg eine Zahl/ID zurück, bei Fehler nil)
+int lua_sd_open(lua_State* L) {
+  const char* dateiname = luaL_checkstring(L, 1);
+  const char* modeStr = luaL_optstring(L, 2, "r"); // "r" für Lesen, "w" für Schreiben
+  
+  String fullPath = resolve_lua_path(dateiname);
+  
+  int slot = get_free_file_slot();
+  if (slot == -1) {
+    return luaL_error(L, "Zu viele Dateien gleichzeitig geoeffnet!");
+  }
+
+  uint8_t mode = FILE_READ;
+  if (strcmp(modeStr, "w") == 0 || strcmp(modeStr, "wb") == 0) {
+    mode = FILE_WRITE;
+  }
+
+  openFiles[slot] = SD.open(fullPath.c_str(), mode);
+  
+  if (!openFiles[slot]) {
+    lua_pushnil(L); // Datei konnte nicht geöffnet werden
+    return 1;
+  }
+
+  lua_pushinteger(L, slot); // Slot-Nummer als Handle an Lua zurückgeben
+  return 1;
+}
+
+// 3. Bytes aus Datei lesen: local bytesTabelle = sd.read(fileHandle, anzahl_bytes)
+int lua_sd_read(lua_State* L) {
+  int slot = luaL_checkinteger(L, 1);
+  size_t count = (size_t)luaL_checkinteger(L, 2);
+
+  if (slot < 0 || slot >= MAX_OPEN_FILES || !openFiles[slot]) {
+    return luaL_error(L, "Ungueltiges Datei-Handle!");
+  }
+
+  if (count == 0) return 0;
+
+  // Temporären Puffer hocheffizient auf dem Stack anlegen
+  uint8_t* buffer = (uint8_t*)alloca(count);
+  int bytesRead = openFiles[slot].read(buffer, count);
+
+  if (bytesRead <= 0) {
+    lua_pushnil(L); // Dateiende erreicht (EOF)
+    return 1;
+  }
+
+  // Gelesene Bytes als numerische Tabelle an Lua zurückgeben (Perfekt für spi.writeBuffer)
+  lua_newtable(L);
+  for (int i = 0; i < bytesRead; i++) {
+    lua_pushinteger(L, buffer[i]);
+    lua_rawseti(L, -2, i + 1); // Lua Indizes sind 1-basiert
+  }
+
+  return 1;
+}
+
+// 4. Lesezeiger versetzen: sd.seek(fileHandle, absolute_position)
+int lua_sd_seek(lua_State* L) {
+  int slot = luaL_checkinteger(L, 1);
+  uint32_t pos = (uint32_t)luaL_checkinteger(L, 2);
+
+  if (slot < 0 || slot >= MAX_OPEN_FILES || !openFiles[slot]) {
+    return luaL_error(L, "Ungueltiges Datei-Handle!");
+  }
+
+  bool success = openFiles[slot].seek(pos);
+  lua_pushboolean(L, success);
+  return 1;
+}
+
+// 5. Datei schließen: sd.close(fileHandle)
+int lua_sd_close(lua_State* L) {
+  int slot = luaL_checkinteger(L, 1);
+
+  if (slot >= 0 && slot < MAX_OPEN_FILES && openFiles[slot]) {
+    openFiles[slot].close(); // Schließt die C++ Datei und gibt den Slot frei
+  }
+  return 0;
+}
+
+int lua_sd_write(lua_State* L) {
+  int slot = luaL_checkinteger(L, 1);
+
+  if (slot < 0 || slot >= MAX_OPEN_FILES || !openFiles[slot]) {
+    return luaL_error(L, "Ungueltiges Datei-Handle!");
+  }
+
+  size_t bytesWritten = 0;
+
+  // Fall A: Es wird ein String (Text) übergeben
+  if (lua_isstring(L, 2)) {
+    size_t len;
+    const char* text = lua_tolstring(L, 2, &len);
+    bytesWritten = openFiles[slot].write((const uint8_t*)text, len);
+  }
+  // Fall B: Es wird eine Tabelle (Byte-Array) übergeben
+  else if (lua_istable(L, 2)) {
+    size_t len = lua_rawlen(L, 2);
+    if (len > 0) {
+      // Temporären Puffer hocheffizient auf dem Stack anlegen
+      uint8_t* buffer = (uint8_t*)alloca(len);
+      for (size_t i = 1; i <= len; i++) {
+        lua_rawgeti(L, 2, i);
+        buffer[i - 1] = (uint8_t)lua_tointeger(L, -1);
+        lua_pop(L, 1);
+      }
+      bytesWritten = openFiles[slot].write(buffer, len);
+    }
+  } 
+  else {
+    return luaL_error(L, "Zweites Argument muss ein String oder eine Tabelle sein!");
+  }
+
+  // Wichtig für den Teensy: Daten sofort physisch auf der Karte sichern
+  openFiles[slot].flush();
+
+  lua_pushinteger(L, bytesWritten); // Anzahl geschriebener Bytes an Lua zurückgeben
+  return 1;
+}
 //********************************************** Grafikfunktionen *************************************
 // ============================================================================
 // VGA GRAPHICS INTERFACE (Modul: vga)
@@ -2918,6 +3282,217 @@ FLASHMEM void restoreTerminalArea(int x, int y, int w, int h) {
 }
 
 
+FLASHMEM int lua_vga_bmpload(lua_State* L) {
+  // 1. Parameter aus Lua holen
+  int x_offset = luaL_checkinteger(L, 1);
+  int y_offset = luaL_checkinteger(L, 2);
+  const char* dateiname = luaL_checkstring(L, 3);
+  float sc = (float)luaL_optnumber(L, 4, 1.0f);
+
+  String fullPath = resolve_lua_path(dateiname);
+
+  if (!SD.exists(fullPath.c_str())) {
+    zeigeFehlerPopup(PSTR("DATEI FEHLER"), PSTR("BMP-Datei existiert nicht."));
+    lua_pushboolean(L, false);
+    return 1;
+  }
+
+  File fp = SD.open(fullPath.c_str(), FILE_READ);
+  if (!fp) {
+    lua_pushboolean(L, false);
+    return 1;
+  }
+
+  uint8_t bmp_header[54];
+  if (fp.read(bmp_header, 54) != 54 || bmp_header[0] != 0x42 || bmp_header[1] != 0x4D) {
+    zeigeFehlerPopup(PSTR("BMP FEHLER"), PSTR("Ungueltiges BMP-Format."));
+    fp.close();
+    lua_pushboolean(L, false);
+    return 1;
+  }
+
+  int vh = fb_width;
+  int vv = fb_height;
+  
+  // Header-Bytes fehlerfrei extrahieren
+  uint32_t xx = bmp_header[18] | ((uint32_t)bmp_header[19] << 8) | ((uint32_t)bmp_header[20] << 16) | ((uint32_t)bmp_header[21] << 24);
+  uint32_t yy = bmp_header[22] | ((uint32_t)bmp_header[23] << 8) | ((uint32_t)bmp_header[24] << 16) | ((uint32_t)bmp_header[25] << 24);
+  uint32_t bmpImageoffset = bmp_header[10] | ((uint32_t)bmp_header[11] << 8) | ((uint32_t)bmp_header[12] << 16) | ((uint32_t)bmp_header[13] << 24);
+
+  uint32_t rowSize = (xx * 3 + 3) & ~3;
+
+  // Skalierungsfaktoren berechnen
+  float xtmp, ytmp;
+  if (xx >= (uint32_t)vh && yy >= (uint32_t)vv) {
+    xtmp = (float)xx / (float)vh;
+    ytmp = (float)yy / (float)vv;
+  } else {
+    xtmp = sc;
+    ytmp = sc;
+  }
+
+  if (ytmp > xtmp) xtmp = ytmp;
+  else ytmp = xtmp;
+
+  // Zielgrößen ermitteln
+  int targetHeight = (int)((float)yy / ytmp);
+  int targetWidth  = (int)((float)xx / xtmp);
+
+  if (targetWidth > vh) targetWidth = vh;
+  if (targetHeight > vv) targetHeight = vv;
+
+  // OPTIMIERUNG 1: Zeilenpuffer auf dem Ultraschnellen Stack anlegen
+  // Wir laden die komplette BMP-Zeile am Stück in den RAM, statt Pixel für Pixel zu lesen.
+  uint8_t* rowBuffer = (uint8_t*)alloca(rowSize);
+
+  // OPTIMIERUNG 2: Fixed-Point Arithmetik (16.16) für die X-Schleife
+  // Das eliminiert langsame Fließkommazahlen (float) aus der inneren Pixel-Schleife.
+  uint32_t fp_xtmp = (uint32_t)(xtmp * 65536.0f);
+
+  for (int row = 0; row < targetHeight; row++) {
+    int sourceY = (int)yy - 1 - (int)((float)row * ytmp);
+    if (sourceY < 0) break;
+
+    // OPTIMIERUNG 3: Nur EIN EINZIGER Seek pro Zeile!
+    uint32_t rowStartPos = bmpImageoffset + (sourceY * rowSize);
+    fp.seek(rowStartPos);
+    fp.read(rowBuffer, rowSize); // Gesamte Zeile mit maximaler SD-Geschwindigkeit streamen
+
+    int sy = row + y_offset;
+    if (sy < 0 || sy >= vv) continue; // Außerhalb des vertikalen Bildschirms? Überspringen.
+
+    uint32_t fp_sourceX = 0; // Fixed-Point Zähler für X
+
+    for (int col = 0; col < targetWidth; col++) {
+      uint32_t sourceX = fp_sourceX >> 16; // Zurück in echten Integer wandeln
+      if (sourceX >= xx) break;
+
+      int sx = col + x_offset;
+      if (sx >= 0 && sx < vh) {
+        // Pixel-Adresse im Zeilenpuffer direkt berechnen (3 Bytes pro Pixel: B, G, R)
+        uint32_t bufIdx = sourceX * 3;
+        
+        // Bit-Schieben und Maskieren direkt aus dem RAM-Puffer
+        uint8_t farbNummer = (rowBuffer[bufIdx + 2] & 0xE0) | 
+                             ((rowBuffer[bufIdx + 1] & 0xE0) >> 3) | 
+                             (rowBuffer[bufIdx] >> 6);
+        
+        vga.drawPixel(sx, sy, farbNummer);
+      }
+
+      fp_sourceX += fp_xtmp; // In 16.16 Schritten weiterzählen
+    }
+  }
+
+  fp.close();
+  lua_pushboolean(L, true);
+  return 1;
+}
+
+int lua_vga_wait_vsync(lua_State* L) {
+  vga.waitSync(); 
+  return 0;
+}
+/*  
+  // 1. Parameter aus Lua holen
+  int x_offset = luaL_checkinteger(L, 1);
+  int y_offset = luaL_checkinteger(L, 2);
+  const char* dateiname = luaL_checkstring(L, 3);
+  float sc = (float)luaL_optnumber(L, 4, 1.0); // Standard-Skalierung ist 1.0
+
+  // Ihren automatischen Pfad-Resolver nutzen
+  String fullPath = resolve_lua_path(dateiname);
+
+  // 2. Prüfen, ob die aufgelöste Datei existiert
+  if (!SD.exists(fullPath.c_str())) {
+    zeigeFehlerPopup(PSTR("DATEI FEHLER"), PSTR("BMP-Datei existiert nicht."));
+    lua_pushboolean(L, false);
+    return 1;
+  }
+
+  // Datei über den aufgelösten Pfad öffnen
+  File fp = SD.open(fullPath.c_str(), FILE_READ);
+  if (!fp) {
+    lua_pushboolean(L, false);
+    return 1;
+  }
+
+  uint8_t bmp_header[54];
+  fp.read(bmp_header, 54);
+  uint32_t skipx = 54;
+
+  // BMP-Magie prüfen ('B' 'M')
+  if (bmp_header[0] != 0x42 || bmp_header[1] != 0x4D) {
+    zeigeFehlerPopup(PSTR("BMP FEHLER"), PSTR("Ungueltiges BMP-Format (Nur 24-Bit unkomprimiert)."));
+    fp.close();
+    lua_pushboolean(L, false);
+    return 1;
+  }
+
+  // Auflösung des VGA-Bildschirms holen
+  int vh = fb_height;
+  int vv = fb_width;
+
+  // Korrekte Bit-Reihenfolge mit Klammerung beim Auslesen der Bildgröße
+  uint32_t xx = ((uint32_t)bmp_header[21] << 24) | ((uint32_t)bmp_header[20] << 16) | ((uint32_t)bmp_header[19] << 8) | bmp_header[18];
+  uint32_t yy = ((uint32_t)bmp_header[25] << 24) | ((uint32_t)bmp_header[24] << 16) | ((uint32_t)bmp_header[23] << 8) | bmp_header[22];
+
+  float xtmp, ytmp;
+  uint32_t restx = 0;
+
+  // Skalierung berechnen
+  if (xx >= (uint32_t)vh && yy >= (uint32_t)vv) {
+    xtmp = (float)xx / vh;
+    ytmp = (float)yy / vv;
+    restx = xx % vh;
+  } else {
+    xtmp = sc;
+    ytmp = sc;
+    restx = 0;
+  }
+
+  uint32_t stepx = (xtmp < 1.0f) ? 1 : (uint32_t)xtmp;
+  uint32_t stepy = (ytmp < 1.0f) ? 1 : (uint32_t)ytmp;
+
+  if (ytmp > xtmp) xtmp = ytmp;
+  else ytmp = xtmp;
+
+  uint8_t buf[3];
+  float rx;
+  int dx;
+  
+  for (int dy = (int)yy - 1; dy > -1; dy -= stepy) {
+    for (dx = 0; dx < (int)xx; dx += stepx) {
+      fp.read(buf, 3); // Liest B = buf[0], G = buf[1], R = buf[2]
+
+      int sx = (int)((float)dx / xtmp) + x_offset;
+      int sy = (int)((float)dy / ytmp) + y_offset;
+
+      // Nur zeichnen, wenn der Pixel im sichtbaren VGA-Bereich liegt
+      if (sx >= 0 && sx < vh && sy >= 0 && sy < vv) {
+        uint8_t farbNummer = ((buf[2] & 0xE0)) | ((buf[1] & 0xE0) >> 3) | (buf[0] >> 6); // KONVERTIERUNG IN EINE 8-BIT FARBNUMMER (0-255 / RRRGGGBB)
+        vga.drawPixel(sx, sy, farbNummer); 
+        // ====================================================================
+        
+      }
+      
+      skipx += stepx * 3;
+      fp.seek(skipx);
+    }
+
+    if (restx) {
+      rx = (float)xx - (float)dx;
+      if (rx > 0) skipx += abs((int)(xx - dx) * 3);
+      else skipx -= abs((int)(xx - dx) * 3);
+    }
+    skipx += (stepy - 1) * xx * 3;
+    fp.seek(skipx);
+  }
+  fp.close(); 
+  lua_pushboolean(L, true);
+  return 1;
+}
+*/
 // ============================================================================
 // TIME - TIMER INTERFACE (Modul: sys)  -- und sonstige Systemdienste
 // ============================================================================
@@ -3736,6 +4311,23 @@ FLASHMEM int lua_sprite_item(lua_State* L) {
 }
 
 //######################################################## SOUND #######################################################
+// Globale Pin-Definitionen für den Musik-Chip (Beispiel-Pins für Teensy 4.1)
+int pin_mp3_dreq = 5;
+
+// Lua-Aufruf: vga.initMusic(dreq_pin)
+int l_music_init(lua_State* L) {
+  pin_mp3_dreq = luaL_checkinteger(L, 1);
+  pinMode(pin_mp3_dreq, INPUT); // DREQ signalisiert, wann der Chip Daten braucht
+  return 0;
+}
+
+// Lua-Aufruf: local bereit = vga.musicReady()
+int l_music_ready(lua_State* L) {
+  // Gibt true zurück, wenn DREQ HIGH ist (Chip bereit für die nächsten 32 Byte)
+  lua_pushboolean(L, digitalRead(pin_mp3_dreq) == HIGH);
+  return 1;
+}
+
 /*
 FLASHMEM int lua_native_sound_play(lua_State* L) {
   if (lua_gettop(L) < 3 || !lua_isnumber(L, 1) || !lua_isnumber(L, 2) || !lua_isnumber(L, 3)) {
@@ -3870,6 +4462,11 @@ FLASHMEM void setup() {
   lua_pushcfunction(L, lua_sd_cat);     lua_setfield(L, -2, "cat");
   lua_pushcfunction(L, lua_sd_get_file_list); lua_setfield(L, -2, "listfile");
   lua_pushcfunction(L, lua_sd_pwd);     lua_setfield(L, -2, "pwd");
+  lua_pushcfunction(L, lua_sd_open);    lua_setfield(L, -2, "open");
+  lua_pushcfunction(L, lua_sd_read);    lua_setfield(L, -2, "read");
+  lua_pushcfunction(L, lua_sd_seek);    lua_setfield(L, -2, "seek");
+  lua_pushcfunction(L, lua_sd_close);   lua_setfield(L, -2, "close");
+  //lua_pushcfunction(L, lua_sd_write);   lua_setfield(L, -2, "write");
   
   lua_setglobal(L, "sd");         // Die Tabelle global unter dem Namen "sd" registrieren
 
@@ -3894,6 +4491,9 @@ FLASHMEM void setup() {
   lua_pushcfunction(L, lua_vga_close_window);  lua_setfield(L, -2, "closeWindow");
   lua_pushcfunction(L, lua_vga_open_window);   lua_setfield(L, -2, "openWindow");
   lua_pushcfunction(L, lua_vga_update_window); lua_setfield(L, -2, "updateWindow");
+  lua_pushcfunction(L, lua_vga_bmpload);       lua_setfield(L, -2, "bmpLoad");
+  lua_pushcfunction(L, lua_vga_wait_vsync);    lua_setfield(L, -2, "waitsync");
+  
   lua_setglobal(L, "vga");        // Die Tabelle "vga" registrieren
 
   // Eine neue globale Tabelle "sprite" in der Lua-VM erstellen
@@ -3916,14 +4516,28 @@ FLASHMEM void setup() {
   // Die Tabelle global unter dem Namen "sprite" registrieren
   lua_setglobal(L, "sprite");
 
+  // Eine neue globale Tabelle "spi" in der Lua-VM erstellen
+  lua_newtable(L);
+
+  lua_pushcfunction(L, lua_spi_begin);         lua_setfield(L, -2, "begin");
+  lua_pushcfunction(L, lua_spi_settings);      lua_setfield(L, -2, "settings");
+  lua_pushcfunction(L, lua_spi_write);         lua_setfield(L, -2, "write");
+  lua_pushcfunction(L, lua_spi_write_buffer);  lua_setfield(L, -2, "writeBuffer");
+  lua_pushcfunction(L, lua_spi_read);          lua_setfield(L, -2, "read");
+  lua_pushcfunction(L, lua_spi_read_buffer);   lua_setfield(L, -2, "readBuffer");
+
+  lua_setglobal(L, "spi");
+
   // Tabelle mit den vga_t4 treibereigenen Soundfunktionen
-  //lua_newtable(L);
+  lua_newtable(L);
+  lua_pushcfunction(L, l_music_init);   lua_setfield(L, -2, "initMusic");
+  lua_pushcfunction(L, l_music_ready);  lua_setfield(L, -2, "musicReady");
   
   //lua_pushcfunction(L, lua_native_sound_play); lua_setfield(L, -2, "play");
   //lua_pushcfunction(L, lua_native_sound_stop); lua_setfield(L, -2, "stop");
   
   // Die Tabelle global unter dem Namen "sound" registrieren
-  //lua_setglobal(L, "sound");
+  lua_setglobal(L, "sound");
 
 
   start_screen();

@@ -80,7 +80,7 @@ for y = 0, screenHeight - 1 do
     
     -- WICHTIG: Jede Zeile dem Teensy-Kern kurz Zeit geben,
     -- die Hintergrundaufgaben (USB-Tastatur, PC-Schnittstelle) zu verarbeiten!
-    delay(1)
+    vga.waitsync() --delay(1)
 end
 
 --- Farben wieder herstellen ---

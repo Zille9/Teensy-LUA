@@ -21,9 +21,14 @@
 //                                                                                                                                                //
 //                                                                                                                                                //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 15.07.2026                         -Lua-Befehl vga.triangle und filltriangle hinzugefügt ->vga.triangle(x1,y1,x2,y2,x3,y3,color) , vga.filltriangle(x1,y1,x2,y2,x3,y3,fillcolor,framecolor)
+//                                    -Lua-Interpreter auf 32Bit Float umgestellt (ein bisschen schneller) - spart aber keinen Platz im RAM1
+//                                    -Sprite- und Sound komplett deaktiviert, das schafft Platz im RAM1 (insgesamt 164kB verfügbar)
+//                                    -sound muss ich auf anderem Wege lösen (vielleicht MIDI?) aaaaber ich hab jetzt über 100kb frei
+//
 // 08.07.2026                         -Lua-Befehl vga.bmpSave zum Speichern des Bildschirms hinzugefügt -> vga.bmpSave(x,y,w,h,Dateiname)
 //                                    -über die Taste PrintScreen kann nun auch der Bildschirminhalt zu jeder Zeit auf SD-Karte geschrieben werden (in OnPress eingebaut)
-//                                    -so ist auch währen der Programmausführung der Bildschirm speicherbar. Dateinamen (Screen.bmp) werden mit Nummern screen_01-99.bmp ergänzt
+//                                    -so ist auch während der Programmausführung der Bildschirm speicherbar. Dateinamen (Screen.bmp) werden mit Nummern screen_01-99.bmp ergänzt
 //
 // 07.07.2026                         -SPI-Funktion hinzugefügt (begin, settings, write, writeBuffer, read, readBuffer)
 //                                    -vga.bmpLoad zum Anzeigen von Windows-BMP-Dateien hinzugefügt -> vga.bmpLoad(x,y,"Dateiname", skalierung [<1 vergössern, >1 verkleinern])
@@ -54,6 +59,7 @@
 
 #include <Arduino.h>
 #include <VGA_t4.h>
+#include <JPEGDEC.h>                    //JPEG-Decoder
 #include <USBHost_t36.h> // Offizielle USB-Host Bibliothek für Teensy 4.1
 #include <SD.h>
 #include <SPI.h>
@@ -67,6 +73,7 @@ static SPISettings currentSettings(4000000, MSBFIRST, SPI_MODE0); // für Lua-SP
 #define MAX_OPEN_FILES 4
 static File openFiles[MAX_OPEN_FILES];
 
+File myFile;
 
 
 extern "C" {
@@ -148,9 +155,10 @@ uint8_t lastRepeatMod = 0;    // Speichert Shift/AltGr Zustand
 uint8_t lastRepeatKeycode = 0;// Speichert die physische Taste (z.B. 40 für Enter)
 bool break_marker = false;    // ESC Taste
 
-/*
+
   //***************************************** SOUND ***********************************************
-  static const short square[] EXTMEM={
+/*
+const short square[64] ={
   32767,32767,32767,32767,
   32767,32767,32767,32767,
   32767,32767,32767,32767,
@@ -169,7 +177,7 @@ bool break_marker = false;    // ESC Taste
   -32767,-32767,-32767,-32767,
   };
 
-  const short  noise[] EXTMEM = {
+const short  noise[256]  = {
   -32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,
   -32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,-32767,32767,-32767,
   -32767,-32767,32767,-32767,-32767,-32767,32767,-32767,-32767,-32767,32767,-32767,-32767,-32767,32767,-32767,
@@ -221,6 +229,8 @@ bool break_marker = false;    // ESC Taste
   chan[5].sinc = 0;
   }
 
+
+
   static void snd_Mixer(short * stream, int len )
   {
   int i;
@@ -241,8 +251,8 @@ bool break_marker = false;    // ESC Taste
     s+=((v3*noise[(chan[3].spos>>8)&(NOISEBSIZE-1)])>>11);
     s+=((v4*noise[(chan[4].spos>>8)&(NOISEBSIZE-1)])>>11);
     s+=((v5*noise[(chan[5].spos>>8)&(NOISEBSIZE-1)])>>11);
-     stream++ = (short)(s);
-     stream++ = (short)(s);
+    *stream++ = (short)(s);
+    *stream++ = (short)(s);
     chan[0].spos += chan[0].sinc;
     chan[1].spos += chan[1].sinc;
     chan[2].spos += chan[2].sinc;
@@ -258,11 +268,13 @@ bool break_marker = false;    // ESC Taste
     chan[C].sinc = F>>1;
   }
   }
+
 */
 //***************************************** VGA *************************************************
 int cursorX = 0;
 int cursorY = 0;
 VGA_T4 vga;
+JPEGDEC jpeg;
 
 lua_State *L;
 
@@ -313,7 +325,7 @@ int bColor = DARKBLUE;
 const int MAX_C = 640 / 8;                 //Anzahl Textspalten
 const int MAX_R = (480 / 8) - 1;           //Anzahl Textzeilen
 
-const char originalTitle[] PROGMEM = "F1:Edit  F2:Run  F3:Datei  F4:HexMon  F5:Info"; // Terminal-Titelzeile
+const char originalTitle[] PROGMEM = "F1:Edit  F2:Run  F3:Datei  F4:Hex  F5:Info       --- Teensy - LUA 1.3 ---"; // Terminal-Titelzeile
 char currentTitleText[81];                //temporärer Puffer für die Titelzeile - somit dynamisch änderbar
 bool Titlechange = false;                 //Marker, das die Titelzeile geändert wurde
 
@@ -330,9 +342,10 @@ struct WindowSlot {
 };
 
 // Maximal 8 Fenster-Slots (Index 0 bis 9)
-EXTMEM static WindowSlot windowManager[10];
+static WindowSlot windowManager[10];
 
 //***************************************** Sprites *********************************************
+/*
 bool gfx_mode_active = false;                //Umschalter für Pseudografikzeichen
 
 EXTMEM unsigned char tileLibrary[256 * 256];
@@ -370,7 +383,7 @@ struct TileAnim {
 TileAnim animList[10]; // Max. 10 verschiedene Animationen gleichzeitig
 int animCounter = 0;
 
-
+*/
 //***************************************** EDITOR **********************************************
 #define EDITOR_MAX_SIZE (128 * 1024)          // 128 KB im PSRAM reservieren
 EXTMEM char editorBuffer[EDITOR_MAX_SIZE];    // Editor-Puffer
@@ -397,26 +410,29 @@ FLASHMEM String resolve_lua_path(String filename) {
 
 
 //********************************** LUA-TERMINAL ***********************************************
-
 FLASHMEM void drawStatusText() {
   int yPixel = (TERM_ROWS - 1) * 8; // Zeile 59
   vga.drawRect(0, yPixel, 640, 8, DARKRED);
   time_t rawtime = Teensy3Clock.get();
-  //rawtime += 3600;
 
   struct tm* timeinfo = gmtime(&rawtime);
   int sekunden = timeinfo->tm_sec;
   int minuten  = timeinfo->tm_min;
   int stunden  = timeinfo->tm_hour;
   int tag      = timeinfo->tm_mday;
-  int monat    = timeinfo->tm_mon + 1;       // tm_mon zählt von 0 bis 11
-  int jahr     = timeinfo->tm_year + 1900;   // tm_year zählt die Jahre seit 1900
+  int monat    = timeinfo->tm_mon + 1;       
+  int jahr     = timeinfo->tm_year + 1900;   
 
-  // Extern-Verweise für das physikalische Heap-Ende deklarieren
+  // 1. Freies RAM1 berechnen (Stack / lokale Variablen)
   extern unsigned long _heap_end;
   extern char *__brkval;
   long freies_internes_ram = (char *)&_heap_end - __brkval;
   int freememKB = freies_internes_ram / 1024;
+
+  // 2. Freies RAM2 berechnen (malloc / new / DMAMEM Heap)
+  struct mallinfo mi = mallinfo();
+  int freies_ram2_bytes = 524288 - mi.uordblks; 
+  int ram2KB = freies_ram2_bytes / 1024;
 
   // Speichergröße von Lua abfragen und freien Speicher berechnen
   int luaKB = 0;
@@ -424,10 +440,12 @@ FLASHMEM void drawStatusText() {
     luaKB = 1024 - (int)lua_gc(L, LUA_GCCOUNT, 0);
   }
 
-  char statusBuf[80];
+  // Erhöhter Puffer auf 90 Zeichen, damit der längere String sicher hineinpasst
+  char statusBuf[90]; 
   snprintf(statusBuf, sizeof(statusBuf),
-           " Teensy - LUA 1.2 | Datum: %02d.%02d.%04d | Zeit: %02d:%02d:%02d | LUA: %dK | RAM1: %dK",
-           tag, monat, jahr, stunden, minuten, sekunden, luaKB, freememKB);
+           "Datum: %02d.%02d.%04d | Zeit: %02d:%02d:%02d | LUA: %dK | RAM1: %dK | RAM2: %dK",
+           tag, monat, jahr, stunden, minuten, sekunden, luaKB, freememKB, ram2KB);
+           
   vga.drawText(8, yPixel, statusBuf, YELLOW, DARKRED, false);
 }
 
@@ -1246,7 +1264,7 @@ FLASHMEM void open_fullscreen_editor(String filename) {
 
           const char* systemKeywords[] = {"sys", "vga", "sd", "math",  "io_control", "sprite", "delay", "delay_us", "print", "type",   // Test auf System-Keywords
                                           "pairs", "ipairs", "tostring", "tonumber", "error", "assert", "inkey", "run", "write", "waitkey",
-                                          "edit", "spi", "dht_read"
+                                          "edit", "spi", "dht_read", "string"
                                          };
 
           for (const char* skw : systemKeywords) {
@@ -1397,7 +1415,7 @@ FLASHMEM void open_fullscreen_editor(String filename) {
 
                 const char* systemKeywords[] = {"sys", "vga", "sd", "math", "io_control", "sprite", "delay", "delay_us",
                                                 "print", "type", "pairs", "ipairs", "tostring", "tonumber", "error", "assert",
-                                                "inkey", "run", "write", "waitkey", "edit", "spi", "dht_read"
+                                                "inkey", "run", "write", "waitkey", "edit", "spi", "dht_read", "string"
                                                };
 
                 for (const char* skw : systemKeywords) {
@@ -3103,7 +3121,7 @@ FLASHMEM int lua_vga_print(lua_State* L) {
   }
 
   if (lua_isnumber(L, 1)) {                         // Lua-Typ abfragen und passend konvertieren
-    double num = lua_tonumber(L, 1);
+    float num = lua_tonumber(L, 1);
     char buf[32];
 
     if (num == (int)num) {                          // Prüfen, ob es eine Ganzzahl oder Fließkommazahl ist für saubere Optik
@@ -3337,42 +3355,40 @@ FLASHMEM int lua_vga_bmpload(lua_State* L) {
 
   uint32_t rowSize = (xx * 3 + 3) & ~3;
 
-  // Skalierungsfaktoren berechnen
-  float xtmp, ytmp;
-  if (xx >= (uint32_t)vh && yy >= (uint32_t)vv) {
-    xtmp = (float)xx / (float)vh;
-    ytmp = (float)yy / (float)vv;
-  } else {
-    xtmp = sc;
-    ytmp = sc;
-  }
+  // --- ANPASSUNG FÜR DIE KORREKTE LUA-SKALIERUNG ---
+  // Wir nutzen den übergebenen Skalierungsfaktor sc direkt.
+  // Ein Faktor von 0.25 verkleinert das Bild auf 1/4 der Größe.
+  if (sc <= 0.0f) sc = 1.0f; // Sicherheits-Fallback
 
-  if (ytmp > xtmp) xtmp = ytmp;
-  else ytmp = xtmp;
+  // Berechnen der Schrittweiten im Originalbild
+  float xtmp = 1.0f / sc;
+  float ytmp = 1.0f / sc;
 
-  // Zielgrößen ermitteln
-  int targetHeight = (int)((float)yy / ytmp);
-  int targetWidth  = (int)((float)xx / xtmp);
+  // Zielgrößen auf dem VGA-Bildschirm ermitteln
+  int targetWidth  = (int)((float)xx * sc);
+  int targetHeight = (int)((float)yy * sc);
 
+  // Verhindern, dass über den physikalischen Bildschirmrand gezeichnet wird
   if (targetWidth > vh) targetWidth = vh;
   if (targetHeight > vv) targetHeight = vv;
+  // --------------------------------------------------
 
   // OPTIMIERUNG 1: Zeilenpuffer auf dem Ultraschnellen Stack anlegen
-  // Wir laden die komplette BMP-Zeile am Stück in den RAM, statt Pixel für Pixel zu lesen.
   uint8_t* rowBuffer = (uint8_t*)alloca(rowSize);
 
   // OPTIMIERUNG 2: Fixed-Point Arithmetik (16.16) für die X-Schleife
-  // Das eliminiert langsame Fließkommazahlen (float) aus der inneren Pixel-Schleife.
   uint32_t fp_xtmp = (uint32_t)(xtmp * 65536.0f);
 
   for (int row = 0; row < targetHeight; row++) {
+    // Schrittweite ytmp wird auf die Zeile angewendet, um die Y-Position im Originalbild zu finden
     int sourceY = (int)yy - 1 - (int)((float)row * ytmp);
     if (sourceY < 0) break;
+    if (sourceY >= (int)yy) continue; // Sicherheitsprüfung
 
     // OPTIMIERUNG 3: Nur EIN EINZIGER Seek pro Zeile!
     uint32_t rowStartPos = bmpImageoffset + (sourceY * rowSize);
     fp.seek(rowStartPos);
-    fp.read(rowBuffer, rowSize); // Gesamte Zeile mit maximaler SD-Geschwindigkeit streamen
+    fp.read(rowBuffer, rowSize); // Gesamte Zeile am Stück streamen
 
     int sy = row + y_offset;
     if (sy < 0 || sy >= vv) continue; // Außerhalb des vertikalen Bildschirms? Überspringen.
@@ -3406,7 +3422,7 @@ FLASHMEM int lua_vga_bmpload(lua_State* L) {
 }
 
 // universelle Screenshot-Funktion für Lua und internes Programm
-bool speichere_bildschirm_als_bmp(int x_start, int y_start, int w, int h, const char* dateiname) {
+FLASHMEM bool speichere_bildschirm_als_bmp(int x_start, int y_start, int w, int h, const char* dateiname) {
   if (w <= 0 || h <= 0) return false;
 
   // 1. Basis-Dateinamen und Endung trennen (z.B. "screenshot.bmp" -> "screenshot" und ".bmp")
@@ -3535,6 +3551,145 @@ int lua_vga_wait_vsync(lua_State* L) {
   return 0;
 }
 
+
+// Lua-Aufruf: vga.drawtriangle(ax, ay, bx, by, cx, cy, color)
+FLASHMEM int lua_vga_triangle(lua_State *L) {
+    // 7 Argumente vom Lua-Stack lesen
+    int16_t ax    = (int16_t)luaL_checkinteger(L, 1);
+    int16_t ay    = (int16_t)luaL_checkinteger(L, 2);
+    int16_t bx    = (int16_t)luaL_checkinteger(L, 3);
+    int16_t by    = (int16_t)luaL_checkinteger(L, 4);
+    int16_t cx    = (int16_t)luaL_checkinteger(L, 5);
+    int16_t cy    = (int16_t)luaL_checkinteger(L, 6);
+    vga_pixel col = (vga_pixel)luaL_checkinteger(L, 7);
+
+    // Aufruf Ihrer C++ VGA-Instanz (hier beispielhaft 'vga' genannt)
+    vga.drawtriangle(ax, ay, bx, by, cx, cy, col);
+
+    return 0; // Keine Rückgabewerte für Lua
+}
+
+// Lua-Aufruf: vga.drawfilledtriangle(ax, ay, bx, by, cx, cy, fillcolor, bordercolor)
+FLASHMEM int lua_vga_filltriangle(lua_State *L) {
+    // 8 Argumente vom Lua-Stack lesen
+    int16_t ax       = (int16_t)luaL_checkinteger(L, 1);
+    int16_t ay       = (int16_t)luaL_checkinteger(L, 2);
+    int16_t bx       = (int16_t)luaL_checkinteger(L, 3);
+    int16_t by       = (int16_t)luaL_checkinteger(L, 4);
+    int16_t cx       = (int16_t)luaL_checkinteger(L, 5);
+    int16_t cy       = (int16_t)luaL_checkinteger(L, 6);
+    vga_pixel fill   = (vga_pixel)luaL_checkinteger(L, 7);
+    vga_pixel border = (vga_pixel)luaL_checkinteger(L, 8);
+
+    vga.drawfilledtriangle(ax, ay, bx, by, cx, cy, fill, border);
+
+    return 0; // Keine Rückgabewerte für Lua
+}
+
+int JPEGDraw(JPEGDRAW * pDraw) {
+  uint16_t *pSrc = pDraw->pPixels;
+  int xStart = pDraw->x;
+  int yStart = pDraw->y;
+
+  for (int y = 0; y < pDraw->iHeight; y++) {
+    int currentY = yStart + y;
+    for (int x = 0; x < pDraw->iWidth; x++) {
+      uint16_t p = *pSrc++;
+
+      uint8_t color8 = ((p >> 13) << 5) | (((p >> 8) & 0x07) << 2) | ((p >> 3) & 0x03);     //565 -> 332 Konvertierung
+      if ((xStart + x < fb_width) && (currentY < fb_height)) {
+        vga.drawPixel(xStart + x, currentY, color8);
+      }
+    }
+  }
+  return 1;
+}
+
+/*
+FLASHMEM int JPEGDraw(JPEGDRAW * pDraw) {
+  uint16_t *pSrc = pDraw->pPixels;
+  int xStart = pDraw->x;
+  int yStart = pDraw->y;
+
+  for (int y = 0; y < pDraw->iHeight; y++) {
+    int currentY = yStart + y;
+    
+    // Performance-Optimierung: Wenn die Zeile außerhalb des Bildschirms liegt, direkt überspringen
+    if (currentY >= fb_height) continue; 
+
+    for (int x = 0; x < pDraw->iWidth; x++) {
+      int currentX = xStart + x;
+      uint16_t p = *pSrc++;
+      uint8_t r = (p >> 8) & 0xE0;  // Holt die obersten 3 Bits von Rot und schiebt sie ganz nach links
+      uint8_t g = (p >> 5) & 0x1C;  // Holt die obersten 3 Bits von Grün und schiebt sie in die Mitte
+      uint8_t b = (p >> 3) & 0x03;  // Holt die obersten 2 Bits von Blau und schiebt sie ganz nach rechts
+      
+      uint8_t color8 = r | g | b;
+
+      // Pixel nur zeichnen, wenn er innerhalb der VGA-Breite liegt
+      if (currentX < fb_width) {
+        vga.drawPixel(currentX, currentY, color8);
+      }
+    }
+  }
+  return 1;
+}*/
+
+void * myOpen(const char *filename, int32_t *size) {
+  myFile = SD.open(filename);
+  if (myFile) {
+    *size = myFile.size();
+    return &myFile;
+  }
+  //syntaxerror(notexistmsg);
+  return NULL;
+}
+
+FLASHMEM void myClose(void *handle) {
+  if (handle) myFile.close();
+}
+
+FLASHMEM int32_t myRead(JPEGFILE * handle, uint8_t *buffer, int32_t length) {
+  return myFile.read(buffer, length);
+}
+
+FLASHMEM int32_t mySeek(JPEGFILE * handle, int32_t position) {
+  return myFile.seek(position);
+}
+
+// vga.jpeg(datei[,x,y,Skalierung])
+FLASHMEM int lua_vga_jpeg(lua_State *L) {
+  // 1. Pflicht-Parameter: Dateiname (muss an Position 1 stehen)
+  if (!lua_isstring(L, 1)) {
+    lua_pushboolean(L, false);
+    lua_pushstring(L, "Fehler: Kein Dateiname übergeben.");
+    return 2; 
+  }
+  const char* dateiname = lua_tostring(L, 1);
+
+  int xPos     = luaL_optinteger(L, 2, 0); // Standard: X = 0
+  int yPos     = luaL_optinteger(L, 3, 0); // Standard: Y = 0
+  int scaleOpt = luaL_optinteger(L, 4, 0); // Standard: Keine Skalierung (0)
+
+  // Validierung für die JPEGDEC Skalierungswerte (Erlaubt sind nur 0, 2, 4, 8)
+  if (scaleOpt != 0 && scaleOpt != 2 && scaleOpt != 4 && scaleOpt != 8) {
+    lua_pushboolean(L, false);
+    lua_pushstring(L, "Fehler: Skalierung (Parameter 4) darf nur 0, 2, 4 oder 8 sein.");
+    return 2;
+  }
+
+  if (jpeg.open(dateiname, myOpen, myClose, myRead, mySeek, JPEGDraw)){
+    jpeg.decode(xPos, yPos, scaleOpt); 
+    jpeg.close();
+    lua_pushboolean(L, true); 
+    return 1;                 
+  } else {
+    lua_pushboolean(L, false);
+    lua_pushstring(L, "Fehler: Dateifehler.");
+    return 2;                 
+  }
+}
+
 // ============================================================================
 // TIME - TIMER INTERFACE (Modul: sys)  -- und sonstige Systemdienste
 // ============================================================================
@@ -3563,8 +3718,8 @@ FLASHMEM int lua_sys_hexmon(lua_State* L) {
   // Der echte physikalische Startpunkt des PSRAMs im Teensy 4.1
   const uint32_t PSRAM_BASIS = 0x70000000;
 
-  vga_print_str(PSTR("\n\r--- PSRAM HARDWARE HEX-MONITOR (ESC to Abort) ---\n\r"));
-  vga_print_str(PSTR("Offset    00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  Decoded Text\n\r"));
+  vga_print_str(PSTR("\n\r--- PSRAM HARDWARE HEX-MONITOR (ESC = Abbruch) ---\n\r"));
+  vga_print_str(PSTR("Adresse   00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F  ASCII Text\n\r"));
   vga_print_str(PSTR("---------------------------------------------------------------------------\n\r"));
 
   char outLine[128];
@@ -3636,7 +3791,7 @@ FLASHMEM int lua_sys_info(lua_State* L) {
   long freies_internes_ram = (char *)&_heap_end - __brkval;
 
   int belegt_kb = lua_gc(L, LUA_GCCOUNT, 0);
-  int maximal_kb = 1024; // Die 1 MB aus Ihrem setup()
+  int maximal_kb = 1024; 
   int frei_kb = maximal_kb - belegt_kb;
 
   // 2. CPU-Geschwindigkeit in MHz auslesen
@@ -3776,7 +3931,7 @@ FLASHMEM int lua_sys_get_hardware_data(lua_State* L) {
   //2.Lua-Speicher abfragen
   int lua_speicher_kb = lua_gc(L, LUA_GCCOUNT, 0);
 
-  // Die maximal zugewiesene Poolgröße (aus Ihrem setup(): 1024 KB)
+  // Die maximal zugewiesene Poolgröße 
   float maximaler_pool_kb = 1024.0f;
 
   // Berechnen, wie viel von den 1 Megabyte im PSRAM noch absolut frei ist!
@@ -3859,6 +4014,7 @@ FLASHMEM int lua_dht_read(lua_State* L) {
 // ============================================================================
 // SPRITE - SPRITE und GFX-Engine (Modul: sprite)  ----------------------------
 // ============================================================================
+/*
 //--------------------- sprite.get(x,y,Num) -----------------------------------
 FLASHMEM int lua_sprite_get(lua_State* L) {
   // Parameter-Prüfung: Wir erwarten 3 Zahlen von sprite.get (x, y, sNum)
@@ -4357,27 +4513,10 @@ FLASHMEM int lua_sprite_item(lua_State* L) {
   lua_pushnumber(L, result);                          // Ergebnis 1 = Eingesammelt, 0 = Nichts
   return 1;
 }
-
+*/
 //######################################################## SOUND #######################################################
-// Globale Pin-Definitionen für den Musik-Chip (Beispiel-Pins für Teensy 4.1)
-int pin_mp3_dreq = 5;
-
-// Lua-Aufruf: vga.initMusic(dreq_pin)
-int l_music_init(lua_State* L) {
-  pin_mp3_dreq = luaL_checkinteger(L, 1);
-  pinMode(pin_mp3_dreq, INPUT); // DREQ signalisiert, wann der Chip Daten braucht
-  return 0;
-}
-
-// Lua-Aufruf: local bereit = vga.musicReady()
-int l_music_ready(lua_State* L) {
-  // Gibt true zurück, wenn DREQ HIGH ist (Chip bereit für die nächsten 32 Byte)
-  lua_pushboolean(L, digitalRead(pin_mp3_dreq) == HIGH);
-  return 1;
-}
-
 /*
-  FLASHMEM int lua_native_sound_play(lua_State* L) {
+FLASHMEM int lua_sound_play(lua_State* L) { //sound.play(chan,freq,vol)
   if (lua_gettop(L) < 3 || !lua_isnumber(L, 1) || !lua_isnumber(L, 2) || !lua_isnumber(L, 3)) {
     lua_pushboolean(L, false);
     return 1;
@@ -4396,7 +4535,7 @@ int l_music_ready(lua_State* L) {
   }
 
   // Lua-Befehl: sound.stop(optionaler_kanal)
-  FLASHMEM int lua_native_sound_stop(lua_State* L) {
+  FLASHMEM int lua_sound_stop(lua_State* L) {
   if (lua_gettop(L) >= 1 && lua_isnumber(L, 1)) {
     int kanal = (int)lua_tonumber(L, 1);
     if (kanal >= 0 && kanal < 6) {
@@ -4407,16 +4546,22 @@ int l_music_ready(lua_State* L) {
   }
   return 0;
   }
+
+  // Lua-Befehl: sound.vol(kanal, vol)
+  FLASHMEM int lua_sound_volume(lua_State* L) {
+    if (lua_gettop(L) < 2 || !lua_isnumber(L, 1) || !lua_isnumber(L, 2)) {
+    lua_pushboolean(L, false);
+    return 1;
+  }
+  
+  int kanal      = (int)lua_tonumber(L, 1);
+  int lautstaerke= (int)lua_tonumber(L, 2);
+    if (kanal >= 0 && kanal < 6) {
+      chan[kanal].vol = lautstaerke;                                       // setzt Volume auf diesen Kanal
+    } 
+  return 0;
+  }
 */
-/*
-  // Gibt den exakten, freien Hardware-RAM1 des Teensy 4.1 in Bytes zurück
-  FLASHMEM int lua_os_freeram(lua_State* L) {
-  struct mallinfo mi = mallinfo();
-  // Ein Teensy 4.1 hat 512 KB (524288 Bytes) im schnellen RAM1
-  int freemem = 524288 - mi.uordblks;
-  lua_pushinteger(L, freemem);
-  return 1;
-  }*/
 //################################################### Lua-RAM-Zuweisung ###############################################
 void* lua_psram_allocator(void* ud, void* ptr, size_t osize, size_t nsize) {
   (void)ud;
@@ -4433,9 +4578,11 @@ void* lua_psram_allocator(void* ud, void* ptr, size_t osize, size_t nsize) {
   }
 }
 
+
 //######################################################## SETUP #######################################################
 FLASHMEM void setup() {
   Serial.begin(9600);                                                     // serielle Schnittstelle für DEBUG
+  //Serial1.begin(115200);
   delay(200);
   myusb.begin();                                                          // USB-Keyboard
   keyboard1.attachPress(OnPress);
@@ -4443,14 +4590,15 @@ FLASHMEM void setup() {
 
   vga_error_t err = vga.begin(VGA_MODE_640x480);                          // VGA Setup
   vga.get_frame_buffer_size(&fb_width, &fb_height);
-  vga.begin_gfxengine(1, 256, 256);
-
+  //vga.begin_gfxengine(1, 256, 256);
+  //vga.begin_audio(8192 , &snd_Mixer);
+  
   memset(termBuffer, '\0', sizeof(termBuffer));
   vga.clear(bColor);
 
   strncpy(currentTitleText, originalTitle, sizeof(originalTitle));        //Text der Titelzeile aus dem PSRAM laden
   currentTitleText[sizeof(currentTitleText) - 1] = '\0';
-
+  
   if (!SD.begin(chipSelect)) {                                            // SD-Karte initialisieren
     vga_print_str("SD-Karte: FEHLGESCHLAGEN\n");
   }
@@ -4459,10 +4607,11 @@ FLASHMEM void setup() {
   L = lua_newstate(lua_psram_allocator, NULL, initialSize);
 
   if (L == NULL) {
-    vga_print_str("Lua-PSRAM-Initialisierung: FEHLGESCHLAGEN\n");
+    vga_print_str("Lua-PSRAM-Init: FEHLGESCHLAGEN\n");
     while (1);                                                            // Stoppe wenn kein PSRAM da ist
   }
 
+  
   // ------------------------ Lua Setup -----------------------------
   luaL_openlibs(L);
 
@@ -4542,10 +4691,14 @@ FLASHMEM void setup() {
   lua_pushcfunction(L, lua_vga_bmpload);       lua_setfield(L, -2, "bmpLoad");
   lua_pushcfunction(L, lua_vga_wait_vsync);    lua_setfield(L, -2, "waitsync");
   lua_pushcfunction(L, lua_vga_bmpsave);       lua_setfield(L, -2, "bmpSave");
-
+  lua_pushcfunction(L, lua_vga_triangle);      lua_setfield(L, -2, "triangle");
+  lua_pushcfunction(L, lua_vga_filltriangle);  lua_setfield(L, -2, "filltriangle");
+  lua_pushcfunction(L, lua_vga_jpeg);          lua_setfield(L, -2, "jpg");
+  
   lua_setglobal(L, "vga");        // Die Tabelle "vga" registrieren
 
   // Eine neue globale Tabelle "sprite" in der Lua-VM erstellen
+/*
   lua_newtable(L);
 
   lua_pushcfunction(L, lua_sprite_get);      lua_setfield(L, -2, "get");
@@ -4564,7 +4717,7 @@ FLASHMEM void setup() {
 
   // Die Tabelle global unter dem Namen "sprite" registrieren
   lua_setglobal(L, "sprite");
-
+*/
   // Eine neue globale Tabelle "spi" in der Lua-VM erstellen
   lua_newtable(L);
 
@@ -4577,17 +4730,17 @@ FLASHMEM void setup() {
 
   lua_setglobal(L, "spi");
 
+/*
   // Tabelle mit den vga_t4 treibereigenen Soundfunktionen
   lua_newtable(L);
-  lua_pushcfunction(L, l_music_init);   lua_setfield(L, -2, "initMusic");
-  lua_pushcfunction(L, l_music_ready);  lua_setfield(L, -2, "musicReady");
 
-  //lua_pushcfunction(L, lua_native_sound_play); lua_setfield(L, -2, "play");
-  //lua_pushcfunction(L, lua_native_sound_stop); lua_setfield(L, -2, "stop");
-
+  lua_pushcfunction(L, lua_sound_play);   lua_setfield(L, -2, "play");
+  lua_pushcfunction(L, lua_sound_stop);   lua_setfield(L, -2, "stop");
+  lua_pushcfunction(L, lua_sound_volume); lua_setfield(L, -2, "vol");
+  
   // Die Tabelle global unter dem Namen "sound" registrieren
   lua_setglobal(L, "sound");
-
+*/
 
   start_screen();
   cursorX = 0;
@@ -4627,7 +4780,7 @@ FLASHMEM void start_screen() {
     }
   } else {
 
-    vga_print_str("--- Teensy 4.1 Standalone Lua Computer ---\n"); //keine init.lua da, dann normaler Startbildschirm
+    vga_print_str("-- Teensy 4.1 Lua Computer ---\n"); //keine init.lua da, dann normaler Startbildschirm
     vga_print_str("\n");
     vga_print_str("USB-Tastatur & VGA bereit.\n");
   }
@@ -4644,12 +4797,14 @@ void loop() {
     handleIncomingChar(lastUsbChar);
     lastUsbChar = -1;
   }
-
+  /*
   while (Serial.available() > 0) {
     char c = Serial.read();
     handleIncomingChar(c);
   }
-
+  */
+  //Serial1.print(mididata);
+  
   if (!running_Program) {
     if (millis() - lastCursorBlink >= blinkInterval) {
       lastCursorBlink = millis();

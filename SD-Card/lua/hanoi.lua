@@ -131,9 +131,19 @@ local function pruefeSieg()
         vga.color(FARBE_GRUEN, FARBE_SCHWARZ)
         vga.print("!!! GEWONNEN !!!")
         
+
         textPos(252, 140)
         vga.color(FARBE_WEISS, FARBE_SCHWARZ)
         vga.print("Sieg in " .. zuege .. " Zuegen!")
+        
+        textPos(252, 155)
+        vga.color(FARBE_GELB, FARBE_SCHWARZ)
+        if zuege < 34 then vga.print("Sie sind ein Profi!") 
+        elseif zuege > 33 and zuege < 38 then vga.print("Sie haben Potential")
+        else vga.print("Sie muessen noch viel ueben")
+        end 
+        
+        vga.color(FARBE_WEISS, FARBE_SCHWARZ)
         textPos(200, 170)
         vga.print("Druecke ENTER fuer neues Spiel")
         

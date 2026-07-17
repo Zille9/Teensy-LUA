@@ -26,6 +26,13 @@ local geschwindigkeit = 150 -- Update-Intervall in Millisekunden (niedriger = sc
 local letztesUpdate    = sys.timer() -- Nutzt Ihren registrierten system.timer()
 
 local fcolor, bcolor = vga.gcolor()
+
+
+local rx1 = StartX - 2
+local ry1 = StartY - 2
+local rx2 = StartX + (FeldBreite * BlockGroesse) - 1
+local ry2 = StartY + (FeldHoehe * BlockGroesse) - 1
+
 -- 3. Funktionen
 local function erstelleFutter()
     -- Futter an zufälliger Position generieren (srand wurde in C++ gesetzt!)
@@ -43,7 +50,7 @@ local function spielInitialisieren()
     punkte = 0
     spielAktiv = true
     erstelleFutter()
-    vga.cls()
+    vga.cls(bcolor)
 end
 
 local function zeichneBlock(bx, by, farbe)
@@ -56,10 +63,6 @@ end
 
 local function spielfeldZeichnen()
     -- Rahmen um das Spielfeld zeichnen
-    local rx1 = StartX - 2
-    local ry1 = StartY - 2
-    local rx2 = StartX + (FeldBreite * BlockGroesse) - 1
-    local ry2 = StartY + (FeldHoehe * BlockGroesse) - 1
     vga.rect(rx1, ry1, rx2, ry2, FARBE_WEISS)
 
     -- Futter zeichnen
@@ -119,15 +122,15 @@ local function spielLogik()
         end
     end
 
-    -- Neuen Kopf vorne am Array einfügen
+    -- Neuen Kopf vorne am Array einfuegen
     table.insert(schlange, 1, {x = kopfX, y = kopfY})
 
-    -- Prüfen, ob Futter gefressen wurde
+    -- Pruefen, ob Futter gefressen wurde
     if kopfX == futter.x and kopfY == futter.y then
         punkte = punkte + 10
         erstelleFutter()
-        -- Altes Bild kurz säubern, damit gefressenes Futter verschwindet
-        vga.cls() 
+        -- Altes Bild kurz saeubern, damit gefressenes Futter verschwindet
+        vga.box(rx1, ry1, rx2-rx1, ry2-ry1, bcolor) 
     else
         -- Wenn kein Futter gefressen wurde, entfernen wir das Schwanzsegment
         -- Das lässt die Schlange sich vorwärts bewegen, ohne zu wachsen

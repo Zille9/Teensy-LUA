@@ -18,7 +18,7 @@
 //                   VGA-Beschaltung: R: 3(2k), 4(1k), 33(470) | G:11(2k), 13(1k), 2(470) | B:10(820), 12(390) | HSync:15(82) | VSync:8 (82)      //
 //                   PCM5102 : BCK: 21, DIN 7, LCK 20  - Kompatibilität zum MCUME-Projekt                                                         //
 //                                                                                                                                                //
-//                                                                                                                                                //
+//      Compiler-Einstellungen: TastaturLayout=Deutsch, Optimize=Fastest, CPU-Speed=600MHz                                                        //
 //                                                                                                                                                //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // 15.07.2026                         -Lua-Befehl vga.triangle und filltriangle hinzugefügt ->vga.triangle(x1,y1,x2,y2,x3,y3,color) , vga.filltriangle(x1,y1,x2,y2,x3,y3,fillcolor,framecolor)
@@ -892,7 +892,7 @@ FLASHMEM void handleRepeat() {
 FLASHMEM void process_keyboard_logic(int unicode, uint8_t mod, uint8_t keycode) {
   bool shift = (mod & 0x02) || (mod & 0x20);
   bool altGr = (mod & 0x40);
-  Serial.print(keycode);
+  
   if (altGr) {
     switch (keycode) {
       case 36: lastUsbChar = 0x7B; return; // AltGr + 7 -> { (Geschweifte Klammer auf)
